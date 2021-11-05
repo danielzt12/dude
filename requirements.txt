@@ -7,4 +7,5 @@ fabio
 h5py==3.2.1
 hdf5plugin
 scikit-image
+silx
 #

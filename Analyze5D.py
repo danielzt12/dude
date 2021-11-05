@@ -43,7 +43,7 @@ class MainWindow:
             twotheta0 = float(self.TwoTheta0_Entry.get_text())
             gamma0 = float(self.Gamma0_Entry.get_text())
             distance = float(self.Distance_Entry.get_text())
-            self.twotheta, self.gamma = np.meshgrid(np.arange(ymin, ymax+1),np.arange(xmin, xmax+1))
+            self.twotheta, self.gamma = np.meshgrid(np.arange(xmin, xmax+1),np.arange(ymin, ymax+1))
             self.twotheta = ((self.twotheta-(xmin+xmax)/2.)*pixelsize/distance+np.radians(twotheta0))
             self.gamma = (((ymin+ymax)/2.-self.gamma)*pixelsize/distance+np.radians(gamma0))
         self.theta = np.radians(90-shifts[:,1]/1000.)[:,np.newaxis,np.newaxis]

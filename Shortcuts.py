@@ -166,6 +166,7 @@ class MainWindow:
             data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1)).reshape(dude.Plot2D_ydata.shape)
         dude.Plot2D_Image.set_array(data)
         dude.Plot2D_Image.set_norm(colors.Normalize())
+        dude.Plot2D_Image.set_cmap("coolwarm")
         dude.Plot2D_Canvas.draw()
         dude.Plot2D_ydata = data
         dude.Plot_Notebook.set_current_page(1)
@@ -283,8 +284,8 @@ class MainWindow:
         elif dude.dimY == 195 and dude.dimX == 487:
             img = epics.caget("dp_pilatus4:image1:ArrayData", as_numpy=1, count=195*487).reshape(195,487)
         elif dude.dimY == 1062 and dude.dimX == 1028:
-            img = epics.caget("s26_eiger_cnm:image1:ArrayData", as_numpy=1, count=1062*1028).reshape(1062,1028)
-        dude.Image_Image.set_array(img.astype(np.int32))
+            img = epics.caget("s26_eiger_cnm:image1:ArrayData", as_numpy=1, count=1062*1028).reshape(1062,1028).astype(np.int32)
+        dude.Image_Image.set_array(img)
         dude.Image_Image.set_norm(colors.LogNorm())
         dude.Image_Canvas.draw()
 

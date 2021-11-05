@@ -149,7 +149,7 @@ class MyMainWindow:
                     self.image *= self.custom_mask
         else:
             image_list = list(map(lambda x:os.path.join(self.image_path,x), self.image_list))
-            self.image = np.zeros((self.ntiff,self.dimY, self.dimX), dtype="uint16")
+            self.image = np.zeros((self.ntiff,self.dimY, self.dimX), dtype="int32") # edist 20211031 from int16
             pool = Pool(processes=cpu_count()) 
             for i, tmparr in enumerate(pool.imap(image_loader, image_list)):
                 self.image[i] = tmparr
@@ -843,7 +843,9 @@ class MyMainWindow:
             else:
                 ydata =  np.array(self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].data)
                 # dirty fix first point bug
-                if self.dirty_fix and "eiger" in self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name:
+                if self.dirty_fix and \
+                   ("eiger" in self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name or \
+                   "QMPX3" in self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name ):
                     ydata[:-1] = ydata[1:]
                     # print("dirty fixing first point bug")
             if self.Scan_ToolBox_M_ToggleButton.get_active():
@@ -894,7 +896,10 @@ class MyMainWindow:
             else:
                 datatmp =  np.array(self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].data)
                 ydata[:datatmp.shape[0]] = datatmp
-                if self.dirty_fix and "eiger" in self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name and self.data[1].time != "whatever":
+                if self.dirty_fix and \
+                   ("eiger" in self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name or \
+                    "QMPX3" in self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name ) and \
+                   self.data[1].time != "whatever":
                     print("dirty fixing first point bug")
                     ydata_flat = ydata.flatten()
                     ydata_flat[:-1] = ydata_flat[1:]
@@ -1004,7 +1009,7 @@ class MyMainWindow:
                     dname = self.data[ndim].d[i].name
                     if "FileNumber" in dname:
                         mda_index = np.array(self.data[2].d[i].data).flatten()
-                print("a,",mda_index)
+                #print("a,",mda_index)
                 print (mda_index.max(), self.tif_index.max(), mda_index.min(), self.tif_index.min())
             else:
                 self.ntiff = self.data[0]['dimensions'][0]
