@@ -119,22 +119,35 @@ class MyMainWindow:
         
         t0 = time.time()
         if self.eiger_enabled:
+            dd = self.h5["/entry/instrument/detector/data"]
+            nd0 = dd.maxshape[0]-dd.shape[0] # maxshape is the intended shape, before interruption of scans
+            if self.pump_probe:
+                nd0 = int(nd0/2)
             if self.sparse_enabled:
                 self.image = None
-                dd = self.h5["/entry/instrument/detector/data"]
-                nd1 = dd.maxshape[0]
+                nd1 = dd.shape[0]
                 nd3 = 0
                 nblock = 1000
                 for i in range(int(nd1/nblock)+(nd1%nblock>0)):
                     nd2 = nblock if nd1>nblock else nd1
                     nd1 -= nblock
-                    ddd = dd[nd3:nd3+nd2][()].reshape(nd2, 1062*1028)
-                    ddd[ddd>2**31]=0
+                    if not self.pump_probe:
+                        ddd = dd[nd3:nd3+nd2][()].reshape(nd2, 1062*1028)
+                        ddd[ddd>2**31]=0
+                    else:
+                        ddd = np.zeros((int(nd2/2), 1062, 1028))
+                        tmp = dd[nd3:nd3+nd2,-512:,:][()].reshape(int(nd2/2), 2, 512, 1028)
+                        ddd[:,:512,:] = tmp[:,0]
+                        ddd[:,-512:,:] = tmp[:,1]
+                        ddd = ddd.reshape(int(nd2/2), 1062*1028)
+                        ddd[ddd>65530]=0
                     if i == 0:
                         self.image = sparse.csr_matrix(ddd)
                     else:
                         self.image = sparse.vstack((self.image, sparse.csr_matrix(ddd)))
                     nd3 += nblock
+                if nd0:
+                    self.image = sparse.vstack((self.image, sparse.csr_matrix(np.zeros((nd0,1062*1028)))))
                 #self.image = None
                 #tmpdata = self.h5["/entry/instrument/detector/data"][()]
                 #tmpdata[tmpdata>2**13]=0
@@ -143,13 +156,15 @@ class MyMainWindow:
                 #self.image = sparse.csr_matrix(tmpdata.reshape(self.h5["/entry/instrument/detector/data"].shape[0], 1062*1028))
                 #tmpdata = None
             else:
-                self.image = self.h5["/entry/instrument/detector/data"][()].astype(np.int32)
-                self.image[self.image<0] = 0
+                self.image = dd[()]
+                self.image[self.image>2**31] = 0
+                if nd0:
+                    self.image = np.vstack((self.image, np.zeros((nd0, 1062, 1028))))
                 if self.Scan_ToolBox_ImageData_MaskAbove_ToggleButton.get_active():
                     self.image *= self.custom_mask
         else:
             image_list = list(map(lambda x:os.path.join(self.image_path,x), self.image_list))
-            self.image = np.zeros((self.ntiff,self.dimY, self.dimX), dtype="uint16")
+            self.image = np.zeros((self.ntiff,self.dimY, self.dimX), dtype="int32") # edist 20211031 from int16
             pool = Pool(processes=cpu_count()) 
             for i, tmparr in enumerate(pool.imap(image_loader, image_list)):
                 self.image[i] = tmparr
@@ -162,6 +177,7 @@ class MyMainWindow:
         self.Scan_ToolBox_U_ToggleButton.set_sensitive(True)
         self.Scan_ToolBox_CustomROI_Entry.set_sensitive(True)
         self.Scan_ToolBox_CustomROI_Add_Button.set_sensitive(True)
+        self.Scan_ToolBox_CustomROI_Sum_Button.set_sensitive(True)
 
 
     def Image_Canvas_Button_Released(self, event):
@@ -369,7 +385,12 @@ class MyMainWindow:
         index = int((widget.get_value()-self.image_index_min)/self.nbin)
         if self.eiger_enabled:
             if self.image_index_max > 0:
-                image_data = self.h5["/entry/instrument/detector/data"][index].astype(np.int32)
+                if self.pump_probe:
+                    image_data = np.zeros((1062,1028), dtype=np.uint16)
+                    image_data[:512] = self.h5["/entry/instrument/detector/data"][int(index*2),-512:]
+                    image_data[-512:] = self.h5["/entry/instrument/detector/data"][int(index*2+1), -512:]
+                else:
+                    image_data = self.h5["/entry/instrument/detector/data"][index].astype(np.int32)
             else:
                 return # h5 not available
         else:
@@ -423,7 +444,7 @@ class MyMainWindow:
                 self.Plot1D_Hightlight = self.Plot1D_Axe.plot(x, y, "ro", markersize=10)
                 self.Plot1D_Canvas.draw()
                 self.Plot1D_Value_Label.set_text('[X = {0:.3f}] [Y = {1:.3f}]'.format(x, y))
-                index = self.image_index_min + index # this presumes self.nbin = 1 always for 1D scan
+                index = self.image_index_min + index * self.nbin # added *self.nbin
                 self.Image_Plot_HScale_Adjustment.set_value(index)
 
 
@@ -434,9 +455,9 @@ class MyMainWindow:
         self.Plot1D_Canvas.draw()
 
 
-    def Scan_Plot1D(self, xdata, ydata):
+    def Scan_Plot1D(self, xdata, ydata, hold=False):
 
-        if not self.Scan_ToolBox_Y_ToggleButton.get_active():
+        if not self.Scan_ToolBox_Y_ToggleButton.get_active() and not hold:
             self.Plot1D_Axe.cla()
         self.Plot1D_Axe.plot(xdata, ydata, "-o")
         self.Plot1D_Axe.set_xscale('log' if self.Plot1D_LogX_ToggleButton.get_active() else 'linear')
@@ -566,7 +587,7 @@ class MyMainWindow:
         self.Plot2D_Axe.set_axis_off()
         self.Plot2D_Image = self.Plot2D_Axe.imshow(ydata,  aspect = 'equal', interpolation = 'nearest', cmap=self.cm, origin="lower")
         if self.Plot2D_Log_ToggleButton.get_active():
-            self.Plot2D_Image.set_norm(colors.LogNorm(vmin = self.Plot2D_Vmin_HScale_Adjustment.get_value()+.1, vmax = self.Plot2D_Vmax_HScale_Adjustment.get_value()+.1))
+            self.Plot2D_Image.set_norm(colors.LogNorm(vmin = max(0.1,self.Plot2D_Vmin_HScale_Adjustment.get_value()), vmax = self.Plot2D_Vmax_HScale_Adjustment.get_value()))
         else:
             self.Plot2D_Image.set_norm(colors.Normalize(vmin = self.Plot2D_Vmin_HScale_Adjustment.get_value(), vmax = self.Plot2D_Vmax_HScale_Adjustment.get_value()))
         self.Plot2D_xdata1 = xdata1
@@ -698,6 +719,13 @@ class MyMainWindow:
         else:
             self.dirty_fix = False
 
+    def PumpProbeToggled(self, widget):
+        
+        if widget.get_active():
+            self.pump_probe = True
+        else:
+            self.pump_probe = False
+
 
     def MainWindow_Destroy(self, widget): 
 
@@ -782,6 +810,81 @@ class MyMainWindow:
             self.Image_Canvas.draw()
         self.Scan_ToolBox_Plot_Changed(None)
 
+
+    def Scan_ToolBox_CustomROI_Summed(self, widget):
+        
+        ndim = len(self.data)-1 if self.data[0]["dimensions"][-1] != 2048 else len(self.data)-2
+        xmin = int(self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.get_value())
+        xmax = int(self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.get_value())
+        ymin = int(self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.get_value())
+        ymax = int(self.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.get_value())
+        if ndim == 1:
+            xdata =  np.array(self.data[1].p[0].data)
+            if self.sparse_enabled:
+                indice0 = np.zeros((1062,1028))
+                indice0[ymin:ymax+1,xmin:xmax+1]=1
+                indice0 = indice0.flatten().nonzero()[0]
+                ydata = np.array(self.image[:,indice0].sum(1))[:,0]
+            else:
+                ydata = self.image[:, ymin:ymax+1,xmin:xmax+1].sum(1).sum(1)
+            self.Scan_Plot1D(xdata[(xdata!=0)*(ydata!=0)], ydata[(xdata!=0)*(ydata!=0)])
+            if self.pump_probe:
+                if ymin>550:
+                    ymin -= 550
+                    ymax -= 550
+                else:
+                    ymin += 550
+                    ymax += 550
+                indice0 = np.zeros((1062,1028))
+                indice0[ymin:ymax+1,xmin:xmax+1]=1
+                indice0 = indice0.flatten().nonzero()[0]
+                ydata2 = np.array(self.image[:,indice0].sum(1))[:,0]
+                self.Scan_Plot1D(xdata[(xdata!=0)*(ydata!=0)], ydata2[(xdata!=0)*(ydata!=0)], hold=True) 
+            self.Plot1D_Canvas.draw()
+        elif ndim == 2:
+            xdata2 = np.zeros((self.data[0]["dimensions"][0],self.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            ydata = np.copy(xdata2)
+            datatmp = np.array(self.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(self.data[1].p[0].data)[:,np.newaxis]
+            if self.sparse_enabled:
+                indice0 = np.zeros((1062,1028))
+                indice0[ymin:ymax+1,xmin:xmax+1]=1
+                indice0 = indice0.flatten().nonzero()[0]
+                ydata = self.image[:,indice0].sum(1).reshape(xdata1.shape)
+            else:
+                ydata = self.image[:, ymin:ymax+1,xmin:xmax+1].sum(1).sum(1).reshape(xdata1.shape)
+            self.Plot2D_Axe.cla()
+            self.Plot2D_Axe.set_axis_off()
+            if self.pump_probe:
+                if ymin>550:
+                    ymin -= 550
+                    ymax -= 550
+                else:
+                    ymin += 550
+                    ymax += 550
+                indice0 = np.zeros((1062,1028))
+                indice0[ymin:ymax+1,xmin:xmax+1]=1
+                indice0 = indice0.flatten().nonzero()[0]
+                # for some reasons the images aren't right, and needs to be shifted
+                ydata2 = self.image[:,indice0].sum(1).reshape(xdata1.shape)
+                ydata_flat = ydata.flatten()
+                ydata_flat[0,:-1] = ydata_flat[0,1:]
+                ydata = ydata_flat.reshape(ydata.shape)
+                ydata_flat = ydata2.flatten()
+                ydata_flat[0,:-1] = ydata_flat[0,1:]
+                ydata2 = ydata_flat.reshape(ydata2.shape)
+                ydata = np.hstack((ydata,ydata2))
+                self.Plot2D_xdata1 = np.hstack((self.Plot2D_xdata1,self.Plot2D_xdata1))
+                self.Plot2D_xdata2 = np.hstack((self.Plot2D_xdata2,self.Plot2D_xdata2))
+            self.Plot2D_Image = self.Plot2D_Axe.imshow(ydata,  aspect = 'equal', interpolation = 'nearest', cmap=self.cm, origin="lower")
+            self.Plot2D_ydata = ydata
+            if self.Plot2D_Log_ToggleButton.get_active():
+                self.Plot2D_Image.set_norm(colors.LogNorm())
+            else:
+                self.Plot2D_Image.set_norm(colors.Normalize())
+            self.Plot2D_Canvas.draw()
         
     def Scan_ToolBox_CustomROI_Added(self, widget):
         
@@ -792,7 +895,7 @@ class MyMainWindow:
                         int(self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.get_value()),\
                         int(self.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.get_value())]
         for row in self.CustomROI_store:
-            if roi_name == row[0]:
+            if roi_info[0] == row[0]:
                 roi_info[0]+="*"
         self.CustomROI_store.append(roi_info)
         self.Scan_ToolBox_U_ComboBox.set_active(len(self.Scan_ToolBox_U_ComboBox.get_model())-1)
@@ -831,26 +934,36 @@ class MyMainWindow:
                     indice0[roi_info[3]:roi_info[4]+1,roi_info[1]:roi_info[2]+1]=1
                     indice0 = indice0.flatten().nonzero()[0]
                     ydata = np.array(self.image[:,indice0].sum(1))[:,0]
-                    print(ydata.shape)
+                    #print(ydata.shape)
                 else:
                     ydata = self.image[:, roi_info[3]:roi_info[4]+1,roi_info[1]:roi_info[2]+1].sum(1).sum(1)
-                try:
-                    self.Image_ShowROI_Rectangle.remove()
-                except (AttributeError, ValueError):
-                    pass
-                self.Image_ShowROI_Rectangle = self.Image_Canvas_Draw_Rectangle(roi_info[1], roi_info[2], roi_info[3], roi_info[4], 'b')
-                self.Image_Canvas.draw()
+                self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.handler_block(self.Scan_ToolBox_CustomROI_YMin_SpinButton_Changed)
+                self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.handler_block(self.Scan_ToolBox_CustomROI_XMin_SpinButton_Changed)
+                self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.handler_block(self.Scan_ToolBox_CustomROI_XMax_SpinButton_Changed)
+                self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.set_upper(self.dimX-1)
+                self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.set_value(roi_info[1])
+                self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.set_lower(0)
+                self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.set_value(roi_info[2])
+                self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.set_upper(self.dimY-1)
+                self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.set_value(roi_info[3])
+                self.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.set_lower(0)
+                self.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.set_value(roi_info[4])
+                self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.handler_unblock(self.Scan_ToolBox_CustomROI_YMin_SpinButton_Changed)
+                self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.handler_unblock(self.Scan_ToolBox_CustomROI_XMin_SpinButton_Changed)
+                self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.handler_unblock(self.Scan_ToolBox_CustomROI_XMax_SpinButton_Changed) 
             else:
                 ydata =  np.array(self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].data)
                 # dirty fix first point bug
-                if self.dirty_fix and "eiger" in self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name:
+                if self.dirty_fix and \
+                   ("eiger" in self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name or \
+                   "QMPX3" in self.data[1].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name ):
                     ydata[:-1] = ydata[1:]
                     # print("dirty fixing first point bug")
             if self.Scan_ToolBox_M_ToggleButton.get_active():
                 mdata = np.array(self.data[1].d[self.Scan_ToolBox_M_ComboBox.get_active()].data)
                 mdata /= mdata.mean()
                 ydata /= mdata
-            self.Scan_Plot1D(xdata[xdata!=0], ydata[xdata!=0]) # added [:,0] might break old versions
+            self.Scan_Plot1D(xdata[(xdata!=0)*(ydata!=0)], ydata[(xdata!=0)*(ydata!=0)]) 
             self.Plot1D_Canvas.draw()
         else:
             # this is to avoid crashing on unfinished data
@@ -871,10 +984,6 @@ class MyMainWindow:
                     ydata = self.image[:,indice0].sum(1).reshape(xdata1.shape)
                 else:
                     ydata = self.image[:, roi_info[3]:roi_info[4]+1,roi_info[1]:roi_info[2]+1].sum(1).sum(1).reshape(xdata1.shape)
-                #try:
-                #    self.Image_ShowROI_Rectangle.remove()
-                #except (AttributeError, ValueError):
-                #    pass
                 self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.handler_block(self.Scan_ToolBox_CustomROI_YMin_SpinButton_Changed)
                 self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.handler_block(self.Scan_ToolBox_CustomROI_XMin_SpinButton_Changed)
                 self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.handler_block(self.Scan_ToolBox_CustomROI_XMax_SpinButton_Changed)
@@ -889,12 +998,13 @@ class MyMainWindow:
                 self.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.handler_unblock(self.Scan_ToolBox_CustomROI_YMin_SpinButton_Changed)
                 self.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.handler_unblock(self.Scan_ToolBox_CustomROI_XMin_SpinButton_Changed)
                 self.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.handler_unblock(self.Scan_ToolBox_CustomROI_XMax_SpinButton_Changed) 
-                #self.Image_ShowROI_Rectangle = self.Image_Canvas_Draw_Rectangle(roi_info[1], roi_info[2], roi_info[3], roi_info[4], 'b')
-                #self.Image_Canvas.draw()
             else:
                 datatmp =  np.array(self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].data)
                 ydata[:datatmp.shape[0]] = datatmp
-                if self.dirty_fix and "eiger" in self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name and self.data[1].time != "whatever":
+                if self.dirty_fix and \
+                   ("eiger" in self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name or \
+                    "QMPX3" in self.data[2].d[self.Scan_ToolBox_Y_ComboBox.get_active()].name ) and \
+                   self.data[1].time != "whatever":
                     print("dirty fixing first point bug")
                     ydata_flat = ydata.flatten()
                     ydata_flat[:-1] = ydata_flat[1:]
@@ -912,9 +1022,9 @@ class MyMainWindow:
             if self.Plot2D_AutoScale_ToggleButton.get_active():
                 self.Plot2D_Vmin_HScale_Adjustment.handler_block(self.Plot2D_Vmin_Changed_Handler)
                 self.Plot2D_Vmax_HScale_Adjustment.handler_block(self.Plot2D_Vmax_Changed_Handler)
-                self.Plot2D_Vmin_HScale_Adjustment.set_upper(ydata.max()-1)
+                self.Plot2D_Vmin_HScale_Adjustment.set_upper(ydata.max()-.01)
                 self.Plot2D_Vmin_HScale_Adjustment.set_value(ydata_min)
-                self.Plot2D_Vmax_HScale_Adjustment.set_lower(ydata_min+1)
+                self.Plot2D_Vmax_HScale_Adjustment.set_lower(ydata_min+.01)
                 self.Plot2D_Vmax_HScale_Adjustment.set_value(ydata.max())
                 self.Plot2D_Vmin_HScale_Adjustment.handler_unblock(self.Plot2D_Vmin_Changed_Handler)
                 self.Plot2D_Vmax_HScale_Adjustment.handler_unblock(self.Plot2D_Vmax_Changed_Handler)
@@ -1004,7 +1114,7 @@ class MyMainWindow:
                     dname = self.data[ndim].d[i].name
                     if "FileNumber" in dname:
                         mda_index = np.array(self.data[2].d[i].data).flatten()
-                print("a,",mda_index)
+                #print("a,",mda_index)
                 print (mda_index.max(), self.tif_index.max(), mda_index.min(), self.tif_index.min())
             else:
                 self.ntiff = self.data[0]['dimensions'][0]
@@ -1104,6 +1214,7 @@ class MyMainWindow:
         self.Image_Plot_HScale_Adjustment.set_step_increment(self.nbin)
         self.Scan_ToolBox_CustomROI_Entry.set_sensitive(False)
         self.Scan_ToolBox_CustomROI_Add_Button.set_sensitive(False)
+        self.Scan_ToolBox_CustomROI_Sum_Button.set_sensitive(False)
         
 
     def Folder_Refresh(self, widget):
@@ -1246,6 +1357,8 @@ class MyMainWindow:
          # ROI Management
         self.Scan_ToolBox_CustomROI_Entry = Gtk.Entry()
         self.Scan_ToolBox_CustomROI_Entry.set_size_request(40, 20)
+        self.Scan_ToolBox_CustomROI_Sum_Button = Gtk.Button(label = " Sum ")
+        self.Scan_ToolBox_CustomROI_Sum_Button.connect("clicked", self.Scan_ToolBox_CustomROI_Summed)
         self.Scan_ToolBox_CustomROI_Add_Button = Gtk.Button(label = " Add ")
         self.Scan_ToolBox_CustomROI_Add_Button.connect("clicked", self.Scan_ToolBox_CustomROI_Added)
 
@@ -1256,9 +1369,11 @@ class MyMainWindow:
         Scan_ToolBox_CustomROI_HBox.set_border_width(3)
         Scan_ToolBox_CustomROI_HBox.pack_start(self.Scan_ToolBox_CustomROI_Entry, True, True, 0)
         Scan_ToolBox_CustomROI_HBox.pack_start(self.Scan_ToolBox_CustomROI_Add_Button, False, True, 0)
+        Scan_ToolBox_CustomROI_HBox.pack_start(self.Scan_ToolBox_CustomROI_Sum_Button, False, True, 0)
         Scan_ToolBox_CustomROI_HBox.pack_start(Scan_ToolBox_ImageData_LoadAll_Button, False, True, 0)
         self.Scan_ToolBox_CustomROI_Entry.set_sensitive(False)
         self.Scan_ToolBox_CustomROI_Add_Button.set_sensitive(False)
+        self.Scan_ToolBox_CustomROI_Sum_Button.set_sensitive(False)
         
         # ROI Definition
         self.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment = Gtk.Adjustment(value = 200, lower = 0, upper = self.dimY-1, step_increment = 1, page_increment = 2, page_size = 0)
@@ -1636,6 +1751,9 @@ class MyMainWindow:
         SettingDirtyFixItem = Gtk.CheckMenuItem(label = "Dirty Fix")
         SettingDirtyFixItem.set_active(True)
         SettingDirtyFixItem.connect("activate", self.DirtyFixToggled)
+        SettingPumpProbeItem = Gtk.CheckMenuItem(label = "Pump Probe")
+        SettingPumpProbeItem.set_active(False)
+        SettingPumpProbeItem.connect("activate", self.PumpProbeToggled)
 
         AddonsMenuItem = Gtk.MenuItem(label = "Add-ons")
         AddonsMenu = Gtk.Menu()
@@ -1674,6 +1792,7 @@ class MyMainWindow:
         SettingMenu.add(SettingSparseItem)
         SettingMenu.add(SettingShowAngleItem)
         SettingMenu.add(SettingDirtyFixItem)
+        SettingMenu.add(SettingPumpProbeItem)
         
         MenuBar = Gtk.MenuBar()
         MenuBar.add(FileMenuItem)
@@ -1714,6 +1833,7 @@ class MyMainWindow:
         self.sparse_enabled= True
         self.show_angle = False
         self.dirty_fix = True
+        self.pump_probe = False
 
 #------------------------Main------------------------------#          
 

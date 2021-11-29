@@ -11,7 +11,6 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from misc_dude import * 
-from skimage.filters import threshold_otsu
 from multiprocessing import Pool, cpu_count
 
 def Display2Data(Axe, x, y):
@@ -43,7 +42,7 @@ class MainWindow:
             twotheta0 = float(self.TwoTheta0_Entry.get_text())
             gamma0 = float(self.Gamma0_Entry.get_text())
             distance = float(self.Distance_Entry.get_text())
-            self.twotheta, self.gamma = np.meshgrid(np.arange(ymin, ymax+1),np.arange(xmin, xmax+1))
+            self.twotheta, self.gamma = np.meshgrid(np.arange(xmin, xmax+1),np.arange(ymin, ymax+1))
             self.twotheta = ((self.twotheta-(xmin+xmax)/2.)*pixelsize/distance+np.radians(twotheta0))
             self.gamma = (((ymin+ymax)/2.-self.gamma)*pixelsize/distance+np.radians(gamma0))
         self.theta = np.radians(90-shifts[:,1]/1000.)[:,np.newaxis,np.newaxis]
@@ -109,35 +108,38 @@ class MainWindow:
                 datatmp = datatmp[:,:,:int(det_ny/det_bin)*det_bin, :int(det_nx/det_bin)*det_bin].reshape(scan_ny,scan_nx,int(det_ny/det_bin), det_bin, int(det_nx/det_bin), det_bin).sum(5).sum(3)
             self.data5d[i] = datatmp
 
-        if xstep > 0:
+        if self.SwapXY_ToggleButton.get_active():
+            print("swapping scanning directions")
+            self.data5d = np.swapaxes(self.data5d, 1, 2)
+        if self.FlipX_ToggleButton.get_active():
             print("flipping image horizontally")
-            self.data5d[:,:,:] = self.data5d[:,:,::-1]
-        if ystep < 0:
+            self.data5d = np.flip(self.data5d, 2)
+        if self.FlipY_ToggleButton.get_active():
             print("flipping image vertically")
-            self.data5d[:,:] = self.data5d[:,::-1]
+            self.data5d = np.flip(self.data5d, 1)
 
-        np.savez_compressed(os.path.join(self.analysis_folder, "data5D.npz"), data=self.data5d, qx=self.qx, qy=self.qy, qz=self.qz, twotheta=self.twotheta, gamma=self.gamma, theta=self.theta)
+        print("writing to data5D.npz, this might take a while")
+        np.savez(os.path.join(self.analysis_folder, "data5D.npz"), data=self.data5d, qx=self.qx, qy=self.qy, qz=self.qz, twotheta=self.twotheta, gamma=self.gamma, theta=self.theta)
         self.data_12 = self.data5d.sum(4).sum(3).sum(0)
         self.Result_Image = self.Result_Axe.imshow(self.data_12, cmap="viridis", aspect=aspect, origin='lower', interpolation = 'nearest')
         self.Result_Canvas.draw()
-        otsu = threshold_otsu(self.data_12)
         self.Threshold1_HScale_Adjustment.handler_block(self.Threshold1_Changed_Handler)
         self.Threshold1_HScale_Adjustment.set_lower(self.data_12.min())
         self.Threshold1_HScale_Adjustment.set_upper(self.data_12.max())
-        self.Threshold1_HScale_Adjustment.set_value(otsu)
+        self.Threshold1_HScale_Adjustment.set_value(self.data_12.min())
         self.Threshold1_HScale_Adjustment.handler_unblock(self.Threshold1_Changed_Handler)
-        self.mask1 = self.data_12 < otsu
+        self.mask1 = np.zeros(self.data_12.shape)
         self.Threshold2_HScale_Adjustment.handler_block(self.Threshold2_Changed_Handler)
         self.Threshold2_HScale_Adjustment.set_lower(self.data_12.min())
         self.Threshold2_HScale_Adjustment.set_upper(self.data_12.max())
-        self.Threshold2_HScale_Adjustment.set_value(otsu)
+        self.Threshold2_HScale_Adjustment.set_value(self.data_12.min())
         self.Threshold2_HScale_Adjustment.handler_unblock(self.Threshold2_Changed_Handler)
-        self.mask2 = self.data_12 < otsu 
+        self.mask2 = np.zeros(self.data_12.shape)
 
 
     def Save(self, widget):
         
-        np.savez_compressed(os.path.join(self.analysis_folder, "Result.npz"), I=self.data_12, mask1=self.mask1, d=self.d_spacing.data, \
+        np.savez(os.path.join(self.analysis_folder, "Result.npz"), I=self.data_12, mask1=self.mask1, d=self.d_spacing.data, \
                             tilt_lr=self.tilt_lr.data, tilt_ud=self.tilt_ud.data, mask2=self.mask2)
         self.Result_Figure.savefig(os.path.join(self.analysis_folder, "Result.png"), dpi=300)
         self.Result_Figure.savefig(os.path.join(self.analysis_folder, "Result.svg"), dpi=300, transparent=True)
@@ -146,7 +148,13 @@ class MainWindow:
     def Load(self, widget, dude):
 
         d5 = np.load(os.path.join(self.analysis_folder, "data5D.npz"))
-        aspect = np.sin(np.radians(float(self.Theta0_Entry.get_text())))
+        shifts = np.loadtxt(os.path.join(self.analysis_folder, "shifts.txt"), dtype=int)
+        ystep = shifts[:,8].mean()
+        print("ystep: ", ystep)
+        xstep = shifts[:,9].mean()
+        print("xstep:", xstep)
+        aspect = np.sin(np.radians(float(self.Theta0_Entry.get_text())))*np.abs(ystep/xstep)
+        print("aspect:", aspect)
         self.wavelength = 12.398/float(self.Energy_Entry.get_text())
         self.data5d = d5["data"]
         self.qx = d5["qx"]
@@ -160,19 +168,18 @@ class MainWindow:
         self.Result_Axe.set_axis_off()
         self.cax.set_axis_off()
         self.Result_Image = self.Result_Axe.imshow(self.data_12, cmap="viridis", aspect=aspect, origin='lower', interpolation = 'nearest')
-        otsu = threshold_otsu(self.data_12)
         self.Threshold1_HScale_Adjustment.handler_block(self.Threshold1_Changed_Handler)
         self.Threshold1_HScale_Adjustment.set_lower(self.data_12.min())
         self.Threshold1_HScale_Adjustment.set_upper(self.data_12.max())
-        self.Threshold1_HScale_Adjustment.set_value(otsu)
+        self.Threshold1_HScale_Adjustment.set_value(self.data_12.min())
         self.Threshold1_HScale_Adjustment.handler_unblock(self.Threshold1_Changed_Handler)
-        self.mask1 = self.data_12 < otsu
+        self.mask1 = np.zeros(self.data_12.shape)
         self.Threshold2_HScale_Adjustment.handler_block(self.Threshold2_Changed_Handler)
         self.Threshold2_HScale_Adjustment.set_lower(self.data_12.min())
         self.Threshold2_HScale_Adjustment.set_upper(self.data_12.max())
-        self.Threshold2_HScale_Adjustment.set_value(otsu)
+        self.Threshold2_HScale_Adjustment.set_value(self.data_12.min())
         self.Threshold2_HScale_Adjustment.handler_unblock(self.Threshold2_Changed_Handler)
-        self.mask2 = self.data_12 < otsu 
+        self.mask2 = np.zeros(self.data_12.shape)
         self.Result_Canvas.draw()
         try:
             self.Result_Canvas.mpl_disconnect(self.Result_Canvas_Mouse_Hover_Event)
@@ -353,6 +360,13 @@ class MainWindow:
         self.Full_ToggleButton = Gtk.ToggleButton("Full")
         self.Full_ToggleButton.set_tooltip_text("active: full extend of the 2D data will be used, original size of data should be equal. \ninactive: useable area with complete overlap, original size of data does not need to be equal.")
         
+        self.SwapXY_ToggleButton = Gtk.ToggleButton("X-Y")
+        self.SwapXY_ToggleButton.set_tooltip_text("toggle this when you are scanning samy or hybridy as the inner loop motor.")
+        self.FlipX_ToggleButton = Gtk.ToggleButton("-X")
+        self.FlipX_ToggleButton.set_tooltip_text("toggle this when you are scanning hybridx from negative to positive, or attoz from positive to negative.")
+        self.FlipY_ToggleButton = Gtk.ToggleButton("-Y")
+        self.FlipY_ToggleButton.set_tooltip_text("toggle this when you are scanning hybridy from positive to negative, or samy from negative to positive.")
+
         Generate_Button = Gtk.Button("Gen")
         Generate_Button.set_tooltip_text("Take the shift correction file and angular values of each pixel, to produce the 5D space.")
         Generate_Button.connect("clicked", self.Generate, dude)
@@ -368,8 +382,8 @@ class MainWindow:
         Save_Button.set_tooltip_text("save results into Results.npz and figure into Result.png")
         Save_Button.connect("clicked", self.Save)
 
-        Threshold_Otsu_Button = Gtk.Button("Otsu")
-        Threshold_Otsu_Button.connect("clicked", self.set_threshold_otsu)
+        #Threshold_Otsu_Button = Gtk.Button("Otsu")
+        #Threshold_Otsu_Button.connect("clicked", self.set_threshold_otsu)
         self.Threshold1_HScale_Adjustment = Gtk.Adjustment(value = 1, lower = 100000, upper = 200000, step_increment = 1, page_increment = 100, page_size = 0)
         self.Threshold1_Changed_Handler = self.Threshold1_HScale_Adjustment.connect("value_changed", self.threshold1_changed)
         Threshold1_HScale = Gtk.HScale()
@@ -463,6 +477,9 @@ class MainWindow:
         HBox1.pack_start(Energy_Label, False, False, 3)
         HBox1.pack_start(self.Energy_Entry, False, False, 3)
         HBox1.pack_start(self.Full_ToggleButton, False, False, 3)
+        HBox1.pack_start(self.SwapXY_ToggleButton, False, False, 3)
+        HBox1.pack_start(self.FlipX_ToggleButton, False, False, 3)
+        HBox1.pack_start(self.FlipY_ToggleButton, False, False, 3)
         vsep = Gtk.VSeparator()
         HBox1.pack_start(vsep, True, True, 3)
         HBox1.pack_start(Generate_Button, False, False, 3)
@@ -471,9 +488,7 @@ class MainWindow:
         HBox1.pack_start(vsep, True, True, 3)
         HBox1.pack_start(Calculate_Button, False, False, 3)
         vsep = Gtk.VSeparator()
-        HBox1.pack_start(vsep, True, True, 3)
-        HBox1.pack_start(Save_Button, False, False, 3)
-
+    
         HBox2 = Gtk.HBox(homogeneous = False, spacing = 3)
         HBox2.pack_start(dmin_Label, False, False, 3)
         HBox2.pack_start(dmin_HScale, True, True, 3)
@@ -493,9 +508,12 @@ class MainWindow:
         HBox3.pack_start(self.Voffset_Entry, False, False, 3)
 
         HBox4 = Gtk.HBox(homogeneous = False, spacing = 3)
-        HBox4.pack_start(Threshold_Otsu_Button, False, False, 3)
+        #HBox4.pack_start(Threshold_Otsu_Button, False, False, 3)
         HBox4.pack_start(Threshold1_HScale, True, True, 3)
         HBox4.pack_start(Threshold2_HScale, True, True, 3)
+        #HBox4.pack_start(vsep, True, True, 3)
+        HBox4.pack_start(Save_Button, False, False, 3)
+
 
         HBox5 = Gtk.HBox(homogeneous = False, spacing = 3)
         HBox5.pack_start(Theta0_Label, False, False, 3)

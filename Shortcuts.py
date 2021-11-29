@@ -119,6 +119,164 @@ class MainWindow:
         dude.Plot2D_Canvas.draw()
         dude.Plot2D_Figure.savefig("overview.png", dpi=300)
 
+    def diffCX(self, widget, dude):
+
+        if not dude.AllImagesLoaded:
+            dude.LoadAllImages(None)
+        ymax = int(dude.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.get_value())
+        ymin = int(dude.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.get_value())
+        xmax = int(dude.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.get_value())
+        xmin = int(dude.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.get_value())
+        if not dude.sparse_enabled:
+            data = (((dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1)*np.arange(xmin,xmax+1)).sum(1)) /\
+                    (dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1).sum(1)))
+        else:
+            m0 = np.arange(xmin,xmax+1)*np.ones((ymax-ymin+1,1))
+            m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
+            m1 = np.zeros((1062,1028))
+            m1[ymin:ymax+1,xmin:xmax+1] = 1
+            m1 = m1.flatten().nonzero()[0]
+            data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+            if dude.pump_probe:
+                if ymin>550:
+                    ymin -= 550
+                    ymax -= 550
+                else:
+                    ymin += 550
+                    ymax += 550
+                m0 = np.arange(xmin,xmax+1)*np.ones((ymax-ymin+1,1))
+                m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
+                m1 = np.zeros((1062,1028))
+                m1[ymin:ymax+1,xmin:xmax+1] = 1
+                m1 = m1.flatten().nonzero()[0]
+                data2 = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+        ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
+        if ndim == 2:
+            original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
+            data -= data2
+            data = data.reshape(original)
+            data_flat = data.flatten()
+            data_flat[0,:-1] = data_flat[0,1:]
+            data = data_flat.reshape(original)
+            dude.Scan_Plot2D(dude.Plot2D_xdata1, dude.Plot2D_xdata2, data)
+            dude.Plot2D_Image.set_norm(colors.Normalize())
+            dude.Plot2D_Image.set_cmap("coolwarm")
+            dude.Plot2D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(1)
+        elif ndim == 1:
+            dude.Scan_Plot1D(dude.Plot1D_xdata, np.copy(data-data2)[:dude.Plot1D_xdata.shape[0],0])
+            dude.Plot1D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(0)
+
+
+    def diffSM(self, widget, dude):
+
+        ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
+        xmin = int(dude.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.get_value())
+        xmax = int(dude.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.get_value())
+        ymin = int(dude.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.get_value())
+        ymax = int(dude.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.get_value())
+        if ndim == 1:
+            indice0 = np.zeros((1062,1028))
+            indice0[ymin:ymax+1,xmin:xmax+1]=1
+            indice0 = indice0.flatten().nonzero()[0]
+            ydata = np.array(dude.image[:,indice0].sum(1))[:,0]
+            if ymin>550:
+                ymin -= 550
+                ymax -= 550
+            else:
+                ymin += 550
+                ymax += 550
+            indice0 = np.zeros((1062,1028))
+            indice0[ymin:ymax+1,xmin:xmax+1]=1
+            indice0 = indice0.flatten().nonzero()[0]
+            ydata2 = np.array(dude.image[:,indice0].sum(1))[:,0]
+            dude.Scan_Plot1D(dude.Plot1D_xdata, (ydata-ydata2)[:dude.Plot1D_xdata.shape[0]]) 
+            dude.Plot1D_Canvas.draw()
+        elif ndim == 2:
+            xdata2 = np.zeros((dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            ydata = np.copy(xdata2)
+            datatmp = np.array(dude.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(dude.data[1].p[0].data)[:,np.newaxis]
+            indice0 = np.zeros((1062,1028))
+            indice0[ymin:ymax+1,xmin:xmax+1]=1
+            indice0 = indice0.flatten().nonzero()[0]
+            ydata = dude.image[:,indice0].sum(1).reshape(xdata1.shape)
+            dude.Plot2D_Axe.cla()
+            dude.Plot2D_Axe.set_axis_off()
+            if ymin>550:
+                ymin -= 550
+                ymax -= 550
+            else:
+                ymin += 550
+                ymax += 550
+            indice0 = np.zeros((1062,1028))
+            indice0[ymin:ymax+1,xmin:xmax+1]=1
+            indice0 = indice0.flatten().nonzero()[0]
+            # for some reasons the images aren't right, and needs to be shifted
+            ydata2 = dude.image[:,indice0].sum(1).reshape(xdata1.shape)
+            ydata -= ydata2
+            ydata_flat = ydata.flatten()
+            ydata_flat[0,:-1] = ydata_flat[0,1:]
+            ydata = ydata_flat.reshape(ydata.shape)
+            dude.Scan_Plot2D(dude.Plot2D_xdata1, dude.Plot2D_xdata2, ydata)
+            dude.Plot2D_Image.set_norm(colors.Normalize())
+            dude.Plot2D_Canvas.draw()
+
+    def diffCY(self, widget, dude):
+
+        if not dude.AllImagesLoaded:
+            dude.LoadAllImages(None)
+        ymax = int(dude.Scan_ToolBox_CustomROI_YMax_Spin_Adjustment.get_value())
+        ymin = int(dude.Scan_ToolBox_CustomROI_YMin_Spin_Adjustment.get_value())
+        xmax = int(dude.Scan_ToolBox_CustomROI_XMax_Spin_Adjustment.get_value())
+        xmin = int(dude.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.get_value())
+        if not dude.sparse_enabled:
+            data = (((dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(2)*np.arange(ymin,ymax+1)).sum(1)) /\
+                    (dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1).sum(1)))
+        else:
+            m0 = np.arange(ymin,ymax+1)[:,np.newaxis]*np.ones(xmax-xmin+1)
+            m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
+            m1 = np.zeros((1062,1028))
+            m1[ymin:ymax+1,xmin:xmax+1] = 1
+            m1 = m1.flatten().nonzero()[0]
+            data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+            if dude.pump_probe:
+                if ymin>550:
+                    ymin -= 550
+                    ymax -= 550
+                else:
+                    ymin += 550
+                    ymax += 550
+                m0 = np.arange(ymin,ymax+1)[:,np.newaxis]*np.ones(xmax-xmin+1)
+                m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
+                m1 = np.zeros((1062,1028))
+                m1[ymin:ymax+1,xmin:xmax+1] = 1
+                m1 = m1.flatten().nonzero()[0]
+                data2 = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+                if ymin>550:
+                    data2 -= 550
+                if ymin<550:
+                    data2 += 550
+        ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
+        if ndim == 2:
+            original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
+            data -= data2
+            data = data.reshape(original)
+            data_flat = data.flatten()
+            data_flat[0,:-1] = data_flat[0,1:]
+            data = data_flat.reshape(original)
+            dude.Scan_Plot2D(dude.Plot2D_xdata1, dude.Plot2D_xdata2, data)
+            dude.Plot2D_Image.set_norm(colors.Normalize())
+            dude.Plot2D_Image.set_cmap("coolwarm")
+            dude.Plot2D_Canvas.draw()
+        elif ndim == 1:
+            dude.Scan_Plot1D(dude.Plot1D_xdata, (data-data2)[:dude.Plot1D_xdata.shape[0],0])
+            dude.Plot1D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(0)
+
 
     def CoMX(self, widget, dude):
 
@@ -130,20 +288,56 @@ class MainWindow:
         xmin = int(dude.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.get_value())
         if not dude.sparse_enabled:
             data = (((dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1)*np.arange(xmin,xmax+1)).sum(1)) /\
-                    (dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1).sum(1))).reshape(dude.Plot2D_ydata.shape)
+                    (dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1).sum(1)))
         else:
             m0 = np.arange(xmin,xmax+1)*np.ones((ymax-ymin+1,1))
             m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
             m1 = np.zeros((1062,1028))
             m1[ymin:ymax+1,xmin:xmax+1] = 1
             m1 = m1.flatten().nonzero()[0]
-            data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1)).reshape(dude.Plot2D_ydata.shape)
-        dude.Plot2D_Image.set_array(data)
-        dude.Plot2D_Image.set_norm(colors.Normalize())
-        dude.Plot2D_Image.set_cmap("coolwarm")
-        dude.Plot2D_Canvas.draw()
-        dude.Plot2D_ydata = data
-        dude.Plot_Notebook.set_current_page(1)
+            data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+            if dude.pump_probe:
+                if ymin>550:
+                    ymin -= 550
+                    ymax -= 550
+                else:
+                    ymin += 550
+                    ymax += 550
+                m0 = np.arange(xmin,xmax+1)*np.ones((ymax-ymin+1,1))
+                m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
+                m1 = np.zeros((1062,1028))
+                m1[ymin:ymax+1,xmin:xmax+1] = 1
+                m1 = m1.flatten().nonzero()[0]
+                data2 = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+        ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
+        if ndim == 2:
+            original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
+            data = data.reshape(original)
+            if dude.pump_probe:
+                data2 = data2.reshape(original)
+                # for some reasons the images aren't right, and needs to be shifted
+                data_flat = data.flatten()
+                data_flat[0,:-1] = data_flat[0,1:]
+                data = data_flat.reshape(data.shape)
+                data_flat = data2.flatten()
+                data_flat[0,:-1] = data_flat[0,1:]
+                data2 = data_flat.reshape(data2.shape)
+               
+                dude.Scan_Plot2D(np.hstack((dude.Plot2D_xdata1,dude.Plot2D_xdata1)),\
+                                 np.hstack((dude.Plot2D_xdata2,dude.Plot2D_xdata2)),\
+                                 np.hstack((data,data2)))
+            else:
+                dude.Scan_Plot2D(dude.Plot2D_xdata1,dude.Plot2D_xdata2,data)
+            dude.Plot2D_Image.set_norm(colors.Normalize())
+            dude.Plot2D_Image.set_cmap("coolwarm")
+            dude.Plot2D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(1)
+        elif ndim == 1:
+            dude.Scan_Plot1D(dude.Plot1D_xdata, np.copy(data)[:dude.Plot1D_xdata.shape[0],0])
+            if dude.pump_probe:
+                dude.Scan_Plot1D(dude.Plot1D_xdata, np.copy(data2)[:dude.Plot1D_xdata.shape[0],0], hold=True)
+            dude.Plot1D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(0)
 
 
     def CoMY(self, widget, dude):
@@ -156,19 +350,59 @@ class MainWindow:
         xmin = int(dude.Scan_ToolBox_CustomROI_XMin_Spin_Adjustment.get_value())
         if not dude.sparse_enabled:
             data = (((dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(2)*np.arange(ymin,ymax+1)).sum(1)) /\
-                    (dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1).sum(1))).reshape(dude.Plot2D_ydata.shape)
+                    (dude.image[:,ymin:ymax+1,xmin:xmax+1].sum(1).sum(1)))
         else:
             m0 = np.arange(ymin,ymax+1)[:,np.newaxis]*np.ones(xmax-xmin+1)
             m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
             m1 = np.zeros((1062,1028))
             m1[ymin:ymax+1,xmin:xmax+1] = 1
             m1 = m1.flatten().nonzero()[0]
-            data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1)).reshape(dude.Plot2D_ydata.shape)
-        dude.Plot2D_Image.set_array(data)
-        dude.Plot2D_Image.set_norm(colors.Normalize())
-        dude.Plot2D_Canvas.draw()
-        dude.Plot2D_ydata = data
-        dude.Plot_Notebook.set_current_page(1)
+            data = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+            if dude.pump_probe:
+                if ymin>550:
+                    ymin -= 550
+                    ymax -= 550
+                else:
+                    ymin += 550
+                    ymax += 550
+                m0 = np.arange(ymin,ymax+1)[:,np.newaxis]*np.ones(xmax-xmin+1)
+                m0 = sparse.csr_matrix(m0.flatten()*np.ones((dude.image.shape[0],1)))
+                m1 = np.zeros((1062,1028))
+                m1[ymin:ymax+1,xmin:xmax+1] = 1
+                m1 = m1.flatten().nonzero()[0]
+                data2 = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
+                if ymin>550:
+                    data2 -= 550
+                if ymin<550:
+                    data2 += 550
+        ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
+        if ndim == 2:
+            original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
+            data = data.reshape(original)
+            if dude.pump_probe:
+                data2 = data2.reshape(original)
+                # for some reasons the images aren't right, and needs to be shifted
+                data_flat = data.flatten()
+                data_flat[0,:-1] = data_flat[0,1:]
+                data = data_flat.reshape(data.shape)
+                data_flat = data2.flatten()
+                data_flat[0,:-1] = data_flat[0,1:]
+                data2 = data_flat.reshape(data2.shape)
+                dude.Scan_Plot2D(np.hstack((dude.Plot2D_xdata1,dude.Plot2D_xdata1)),\
+                                 np.hstack((dude.Plot2D_xdata2,dude.Plot2D_xdata2)),\
+                                 np.hstack((data,data2)))
+            else:
+                dude.Scan_Plot2D(dude.Plot2D_xdata1,dude.Plot2D_xdata2,data)
+            dude.Plot2D_Image.set_norm(colors.Normalize())
+            dude.Plot2D_Image.set_cmap("coolwarm")
+            dude.Plot2D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(1)
+        elif ndim == 1:
+            dude.Scan_Plot1D(dude.Plot1D_xdata, np.copy(data)[:dude.Plot1D_xdata.shape[0],0])
+            if dude.pump_probe:
+                dude.Scan_Plot1D(dude.Plot1D_xdata, np.copy(data2)[:dude.Plot1D_xdata.shape[0],0], hold=True)
+            dude.Plot1D_Canvas.draw()
+            dude.Plot_Notebook.set_current_page(0)
 
 
     def SumX(self, widget, dude):
@@ -274,6 +508,8 @@ class MainWindow:
             epics.caput("s26_eiger_cnm:ROI{0}:SizeX".format(flag), xmax-xmin, wait=True)
             epics.caput("s26_eiger_cnm:ROI{0}:MinY".format(flag), ymin, wait=True)
             epics.caput("s26_eiger_cnm:ROI{0}:SizeY".format(flag), ymax-ymin, wait=True)
+            epics.caput("s26_eiger_cnm:Over1:{0}:PositionX".format(flag+4), xmin, wait=True)
+            epics.caput("s26_eiger_cnm:Over1:{0}:PositionY".format(flag+4), ymin-20, wait=True)
 
             
     def ShowLatest(self, widget, dude):
@@ -283,8 +519,8 @@ class MainWindow:
         elif dude.dimY == 195 and dude.dimX == 487:
             img = epics.caget("dp_pilatus4:image1:ArrayData", as_numpy=1, count=195*487).reshape(195,487)
         elif dude.dimY == 1062 and dude.dimX == 1028:
-            img = epics.caget("s26_eiger_cnm:image1:ArrayData", as_numpy=1, count=1062*1028).reshape(1062,1028)
-        dude.Image_Image.set_array(img.astype(np.int32))
+            img = epics.caget("s26_eiger_cnm:image1:ArrayData", as_numpy=1, count=1062*1028).reshape(1062,1028).astype(np.int32)
+        dude.Image_Image.set_array(img)
         dude.Image_Image.set_norm(colors.LogNorm())
         dude.Image_Canvas.draw()
 
@@ -489,6 +725,21 @@ class MainWindow:
         Stretch_Button.set_tooltip_text("automatically stretching, the cursor values are still correct after stretching")
         Stretch_Button.connect("clicked", self.Stretch, dude)
         button_list += [Stretch_Button]
+
+        diffCX_Button = Gtk.Button("diff of X CoM")
+        diffCX_Button.set_tooltip_text("Marc Zajac")
+        diffCX_Button.connect("clicked", self.diffCX, dude)
+        button_list += [diffCX_Button]
+
+        diffCY_Button = Gtk.Button("diff of Y CoM")
+        diffCY_Button.set_tooltip_text("Marc Zajac")
+        diffCY_Button.connect("clicked", self.diffCY, dude)
+        button_list += [diffCY_Button]
+
+        diffSM_Button = Gtk.Button("diff of Sum")
+        diffSM_Button.set_tooltip_text("Marc Zajac")
+        diffSM_Button.connect("clicked", self.diffSM, dude)
+        button_list += [diffSM_Button]
 
         grid = Gtk.Grid()
         nrow = int(sqrt(len(button_list)))
