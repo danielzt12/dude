@@ -13,8 +13,9 @@ import h5py
 try:
     import epics
 except:
-    pass
-
+    beamline = False
+else:
+    beamline = True
 
 class MainWindow:
 
@@ -152,13 +153,19 @@ class MainWindow:
                 data2 = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
         ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
         if ndim == 2:
+            xdata2 = np.zeros((dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            ydata = np.copy(xdata2)
+            datatmp = np.array(dude.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(dude.data[1].p[0].data)[:,np.newaxis]
             original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
             data -= data2
             data = data.reshape(original)
             data_flat = data.flatten()
             data_flat[0,:-1] = data_flat[0,1:]
             data = data_flat.reshape(original)
-            dude.Scan_Plot2D(dude.Plot2D_xdata1, dude.Plot2D_xdata2, data)
+            dude.Scan_Plot2D(xdata1, xdata2, data) # used to be dude.Plot2D_xdata1, dude.Plot2D_xdata2
             dude.Plot2D_Image.set_norm(colors.Normalize())
             dude.Plot2D_Image.set_cmap("coolwarm")
             dude.Plot2D_Canvas.draw()
@@ -221,7 +228,7 @@ class MainWindow:
             ydata_flat = ydata.flatten()
             ydata_flat[0,:-1] = ydata_flat[0,1:]
             ydata = ydata_flat.reshape(ydata.shape)
-            dude.Scan_Plot2D(dude.Plot2D_xdata1, dude.Plot2D_xdata2, ydata)
+            dude.Scan_Plot2D(xdata1, xdata2, ydata) # edits used to be dude.Plot2D_xdata1, dude.Plot2D_xdata2
             dude.Plot2D_Image.set_norm(colors.Normalize())
             dude.Plot2D_Canvas.draw()
 
@@ -262,13 +269,19 @@ class MainWindow:
                     data2 += 550
         ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
         if ndim == 2:
+            xdata2 = np.zeros((dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            ydata = np.copy(xdata2)
+            datatmp = np.array(dude.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(dude.data[1].p[0].data)[:,np.newaxis]
             original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
             data -= data2
             data = data.reshape(original)
             data_flat = data.flatten()
             data_flat[0,:-1] = data_flat[0,1:]
             data = data_flat.reshape(original)
-            dude.Scan_Plot2D(dude.Plot2D_xdata1, dude.Plot2D_xdata2, data)
+            dude.Scan_Plot2D(xdata1, xdata2, data) # used to be dude.Plot2D_xdata1, dude.Plot2D_xdata2
             dude.Plot2D_Image.set_norm(colors.Normalize())
             dude.Plot2D_Image.set_cmap("coolwarm")
             dude.Plot2D_Canvas.draw()
@@ -311,6 +324,12 @@ class MainWindow:
                 data2 = ((m0.multiply(dude.image[:,m1])).sum(1) / dude.image[:,m1].sum(1))
         ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
         if ndim == 2:
+            xdata2 = np.zeros((dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            ydata = np.copy(xdata2)
+            datatmp = np.array(dude.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(dude.data[1].p[0].data)[:,np.newaxis]
             original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
             data = data.reshape(original)
             if dude.pump_probe:
@@ -323,11 +342,11 @@ class MainWindow:
                 data_flat[0,:-1] = data_flat[0,1:]
                 data2 = data_flat.reshape(data2.shape)
                
-                dude.Scan_Plot2D(np.hstack((dude.Plot2D_xdata1,dude.Plot2D_xdata1)),\
-                                 np.hstack((dude.Plot2D_xdata2,dude.Plot2D_xdata2)),\
+                dude.Scan_Plot2D(np.hstack((xdata1,xdata1)),\
+                                 np.hstack((xdata2,xdata2)),\
                                  np.hstack((data,data2)))
             else:
-                dude.Scan_Plot2D(dude.Plot2D_xdata1,dude.Plot2D_xdata2,data)
+                dude.Scan_Plot2D(xdata1,xdata2,data)
             dude.Plot2D_Image.set_norm(colors.Normalize())
             dude.Plot2D_Image.set_cmap("coolwarm")
             dude.Plot2D_Canvas.draw()
@@ -377,6 +396,12 @@ class MainWindow:
                     data2 += 550
         ndim = len(dude.data)-1 if dude.data[0]["dimensions"][-1] != 2048 else len(dude.data)-2
         if ndim == 2:
+            xdata2 = np.zeros((dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            ydata = np.copy(xdata2)
+            datatmp = np.array(dude.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(dude.data[1].p[0].data)[:,np.newaxis]
             original = (dude.data[0]["dimensions"][0],dude.data[0]["dimensions"][1])
             data = data.reshape(original)
             if dude.pump_probe:
@@ -388,11 +413,11 @@ class MainWindow:
                 data_flat = data2.flatten()
                 data_flat[0,:-1] = data_flat[0,1:]
                 data2 = data_flat.reshape(data2.shape)
-                dude.Scan_Plot2D(np.hstack((dude.Plot2D_xdata1,dude.Plot2D_xdata1)),\
-                                 np.hstack((dude.Plot2D_xdata2,dude.Plot2D_xdata2)),\
+                dude.Scan_Plot2D(np.hstack((xdata1,xdata1)),\
+                                 np.hstack((xdata2,xdata2)),\
                                  np.hstack((data,data2)))
             else:
-                dude.Scan_Plot2D(dude.Plot2D_xdata1,dude.Plot2D_xdata2,data)
+                dude.Scan_Plot2D(xdata1,xdata2,data)
             dude.Plot2D_Image.set_norm(colors.Normalize())
             dude.Plot2D_Image.set_cmap("coolwarm")
             dude.Plot2D_Canvas.draw()
@@ -557,6 +582,26 @@ class MainWindow:
                     else:
                         print("impossible!", z_or_x)
                 dialog.destroy()
+        elif dude.MDA_File_ListStore[dude.mda_selection_path[0]][5] == "samy":
+            if epics.caget("26idc:1:userCalc7.VAL") or epics.caget("26idc:1:userCalc5.VAL"):
+                print("unlock hybrid before doing this")
+                return
+            lelements = dude.Plot2D_P0_Label.get_text().split()
+            x0, y0 = float(lelements[3][:-1]), float(lelements[6][:-1])
+            if dude.MDA_File_ListStore[dude.mda_selection_path[0]][1][:4] == "atto":
+                z_or_x = dude.MDA_File_ListStore[dude.mda_selection_path[0]][1][4]
+                dialog = Gtk.MessageDialog(dude.Main_Window, 0, Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO, "Moving samy to {0:.3f} and atto{1} to {2:.3f}?".format(x0, z_or_x, y0))
+                response = dialog.run()
+                if response == Gtk.ResponseType.YES:
+                    epics.caput("26idcnpi:m17.VAL", x0)
+                    time.sleep(.1)
+                    if z_or_x == "z":
+                        epics.caput("atto2:m3.VAL", y0)
+                    elif z_or_x == "x":
+                        epics.caput("atto2:m4.VAL", y0)
+                    else:
+                        print("impossible!", z_or_x)
+                dialog.destroy()
         else:
             print("unrecognized motors!")
 
@@ -636,8 +681,51 @@ class MainWindow:
             for d in dude.data[2].d:
                 if d.name == "atto2:PIC867:1:m1.RBV":
                     theta = np.array(d.data).mean()
-        dude.Plot2D_Axe.set_aspect(sin(radians(theta)))
+        dx = np.abs(float(dude.MDA_File_ListStore[dude.mda_selection_path[0]][6])-\
+                    float(dude.MDA_File_ListStore[dude.mda_selection_path[0]][7]))/\
+            (float(dude.MDA_File_ListStore[dude.mda_selection_path[0]][8])-1)
+        dy = np.abs(float(dude.MDA_File_ListStore[dude.mda_selection_path[0]][2])-\
+                    float(dude.MDA_File_ListStore[dude.mda_selection_path[0]][3]))/\
+            (float(dude.MDA_File_ListStore[dude.mda_selection_path[0]][4])-1)
+        dude.Plot2D_Axe.set_aspect(sin(radians(theta))/dx*dy)
         dude.Plot2D_Canvas.draw()
+
+
+    def Hist(self, widget, dude):
+
+        nbin = max(50, int(dude.Scan_ToolBox_ImageData_HotPixel_Adjustment.get_value()))
+        dude.Plot1D_Axe.cla()
+        dude.Plot1D_Axe.hist(np.copy(dude.Plot2D_ydata).flatten(), nbin)
+        dude.Plot1D_Canvas.draw()
+        dude.Plot_Notebook.set_current_page(0)
+    
+
+    def AvgY(self, widget, dude):
+        
+        dude.Plot1D_Axe.cla()
+        dude.Plot1D_xdata = dude.Plot2D_xdata2.mean(0)
+        dude.Plot1D_ydata = np.copy(dude.Plot2D_ydata).mean(0)
+        dude.Plot1D_Axe.plot(dude.Plot1D_xdata, dude.Plot1D_ydata, '-o')
+        dude.Plot1D_Canvas.draw()
+        dude.Plot_Notebook.set_current_page(0)
+        
+
+    def AvgX(self, widget, dude):
+        
+        dude.Plot1D_Axe.cla()
+        dude.Plot1D_xdata = dude.Plot2D_xdata1.mean(1)
+        dude.Plot1D_ydata = np.copy(dude.Plot2D_ydata).mean(1)
+        dude.Plot1D_Axe.plot(dude.Plot1D_xdata, dude.Plot1D_ydata, '-o')
+        dude.Plot1D_Canvas.draw()
+        dude.Plot_Notebook.set_current_page(0)
+
+
+    def save2csv(self, widget, dude, flag):
+
+        analysis_folder = os.path.join(os.path.abspath(os.path.join(dude.MDA_folder, os.pardir, 'Analysis')))    
+        scannum = dude.MDA_File_ListStore[dude.mda_selection_path[0]][0]
+        data = np.stack((dude.Plot1D_xdata, dude.Plot1D_ydata)).T if flag == 1 else dude.Plot2D_ydata
+        np.savetxt(os.path.join(analysis_folder, "scan{0}_{1}D.csv".format(scannum, flag)), data, delimiter=',')
 
 
     def MainWindow_Destroy(self, widget, dude): 
@@ -690,26 +778,27 @@ class MainWindow:
         SumY_Button.connect("clicked", self.SumY, dude)
         button_list += [SumY_Button]
 
-        for i in range(1,5):
-            RoI_Button = Gtk.Button("Redefine RoI{0}".format(i))
-            RoI_Button.set_tooltip_text("Set the RoI you scan with as the RoI you just drew")
-            RoI_Button.connect("clicked", self.defRoI, dude, i)
-            button_list += [RoI_Button]
+        if beamline:
+            for i in range(1,5):
+                RoI_Button = Gtk.Button("Redefine RoI{0}".format(i))
+                RoI_Button.set_tooltip_text("Set the RoI you scan with as the RoI you just drew")
+                RoI_Button.connect("clicked", self.defRoI, dude, i)
+                button_list += [RoI_Button]
+
+            ShowLatest_Button = Gtk.Button("Latest Image")
+            ShowLatest_Button.set_tooltip_text("Show the latest image to help you redefine your RoIs.")
+            ShowLatest_Button.connect("clicked", self.ShowLatest, dude)
+            button_list += [ShowLatest_Button]
+
+            GotoP0_Button = Gtk.Button("Goto P0")
+            GotoP0_Button.set_tooltip_text("Move Piezo X Y to position indicated by P0")
+            GotoP0_Button.connect("clicked", self.GotoP0, dude)
+            button_list += [GotoP0_Button]
 
         Qxz_Button = Gtk.Button("Generate Qxz")
         Qxz_Button.set_tooltip_text("")
         Qxz_Button.connect("clicked", self.Qxz, dude)
-        button_list += [Qxz_Button]
-
-        ShowLatest_Button = Gtk.Button("Latest Image")
-        ShowLatest_Button.set_tooltip_text("Show the latest image to help you redefine your RoIs.")
-        ShowLatest_Button.connect("clicked", self.ShowLatest, dude)
-        button_list += [ShowLatest_Button]
-
-        GotoP0_Button = Gtk.Button("Goto P0")
-        GotoP0_Button.set_tooltip_text("Move Piezo X Y to position indicated by P0")
-        GotoP0_Button.connect("clicked", self.GotoP0, dude)
-        button_list += [GotoP0_Button]
+        #button_list += [Qxz_Button]
 
         SaveMat_Button = Gtk.Button("RoI to mat")
         SaveMat_Button.set_tooltip_text("save roi data to matlab file under the h5 folder")
@@ -740,6 +829,31 @@ class MainWindow:
         diffSM_Button.set_tooltip_text("Marc Zajac")
         diffSM_Button.connect("clicked", self.diffSM, dude)
         button_list += [diffSM_Button]
+
+        Hist_Button = Gtk.Button("Hist in 2D")
+        Hist_Button.set_tooltip_text("calculate histogram for the 2D plot, number of bins can be set using the entry near the mask below button, default is 50.")
+        Hist_Button.connect("clicked", self.Hist, dude)
+        button_list += [Hist_Button]
+
+        AvgX_Button = Gtk.Button("Avg X in 2D")
+        AvgX_Button.set_tooltip_text("avearge in the X direction of the 2D plot.")
+        AvgX_Button.connect("clicked", self.AvgX, dude)
+        button_list += [AvgX_Button]
+
+        AvgY_Button = Gtk.Button("Avg Y in 2D")
+        AvgY_Button.set_tooltip_text("avearge in the Y direction of the 2D plot.")
+        AvgY_Button.connect("clicked", self.AvgY, dude)
+        button_list += [AvgY_Button]
+
+        Save1D_Button = Gtk.Button("Plot1D to csv")
+        Save1D_Button.set_tooltip_text("save 1D plot to csv file under the Analysis folder.")
+        Save1D_Button.connect("clicked", self.save2csv, dude, 1)
+        button_list += [Save1D_Button]
+
+        Save2D_Button = Gtk.Button("Plot2D to csv")
+        Save2D_Button.set_tooltip_text("save 2D plot to csv file under the Analysis folder.")
+        Save2D_Button.connect("clicked", self.save2csv, dude, 2)
+        button_list += [Save2D_Button]
 
         grid = Gtk.Grid()
         nrow = int(sqrt(len(button_list)))

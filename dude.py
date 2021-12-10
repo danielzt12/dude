@@ -32,6 +32,19 @@ except:
 else:
     import ProbeLibrary
     
+try:
+    import gspread
+except:
+    pass
+else:
+    import uuid
+    from googleapiclient.discovery import build
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.http import MediaFileUpload    
+    from oauth2client.service_account import ServiceAccountCredentials
+    from gspread_formatting import set_row_height
 
 class MyMainWindow:
 
@@ -424,6 +437,196 @@ class MyMainWindow:
             self.Image_Image.set_norm(colors.Normalize(vmin = self.Image_Vmin_HScale_Adjustment.get_value(), vmax = self.Image_Vmax_HScale_Adjustment.get_value()))
         self.Image_Canvas.draw()
 
+    def XRF_RoI(self, widget, flag):
+
+        if flag == 1:
+            xmin = int(self.XRF1_Vmin_HScale_Adjustment.get_value())
+            xmax = int(self.XRF1_Vmax_HScale_Adjustment.get_value())
+            if self.xrf1_spec == 0:
+                ydata = self.xrf_data[:4,:,xmin:xmax+1].sum(0).sum(1)
+            elif self.xrf1_spec == 8:
+                ydata = self.xrf_data[4,:,xmin:xmax+1].sum(1)
+            else:
+                ydata = self.xrf_data[self.xrf1_spec-1,:,xmin:xmax+1].sum(1)
+        else:
+            xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
+            xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
+            if self.xrf2_spec == 0:
+                ydata = self.xrf_data[:4,:,xmin:xmax+1].sum(0).sum(1)
+            elif self.xrf2_spec == 8:
+                ydata = self.xrf_data[4,:,xmin:xmax+1].sum(1)
+            else:
+                ydata = self.xrf_data[self.xrf2_spec-1,:,xmin:xmax+1].sum(1)
+        ndim = len(self.data)-1 if self.data[0]["dimensions"][-1] != 2048 else len(self.data)-2
+        if ndim == 1:
+            xdata = np.array(self.data[1].p[0].data)
+            self.Scan_Plot1D(xdata[(xdata!=0)*(ydata!=0)], ydata[(xdata!=0)*(ydata!=0)])
+            self.Plot1D_Canvas.draw()
+        elif ndim == 2:
+            xdata2 = np.zeros((self.data[0]["dimensions"][0],self.data[0]["dimensions"][1]))
+            xdata1 = np.copy(xdata2)+1
+            datatmp = np.array(self.data[2].p[0].data)
+            xdata2[:datatmp.shape[0]] = datatmp
+            xdata1 *= np.array(self.data[1].p[0].data)[:,np.newaxis]
+            ydata2 = np.zeros(xdata2.shape).flatten()
+            ydata2[:ydata.shape[0]]=ydata
+            ydata2 = ydata2.reshape(xdata2.shape)
+            self.Scan_Plot2D(xdata1, xdata2, ydata2)
+            self.Plot2D_Image.set_norm(colors.Normalize(ydata.min(), ydata.max()))
+            self.Plot2D_Canvas.draw()
+            
+
+    def XRF_Sum(self, widget):
+
+        self.XRF1_Axe.cla()
+        index = int(self.XRF_Plot_HScale_Adjustment.get_value())
+        if self.xrf1_spec == 0:
+            self.xrf1_data = self.xrf_data[:4].sum(0).sum(0)
+        elif self.xrf1_spec == 8:
+            self.xrf1_data = self.xrf_data[4].sum(0)
+        else:
+            self.xrf1_data = self.xrf_data[self.xrf1_spec-1].sum(0)
+        self.XRF1_Axe.plot(self.xrf1_data)
+        xmin = int(self.XRF1_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF1_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF1_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf1_data[xmin:xmax+1].min()
+            ymax = self.xrf1_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF1_Axe.set_ylim(ymin-dy, ymax+dy)
+        self.XRF2_Axe.cla()
+        if self.xrf2_spec == 0:
+            self.xrf2_data = self.xrf_data[:4].sum(0).sum(0)
+        elif self.xrf2_spec == 8:
+            self.xrf2_data = self.xrf_data[4].sum(0)
+        else:
+            self.xrf2_data = self.xrf_data[self.xrf2_spec-1].sum(0)
+        self.XRF2_Axe.plot(self.xrf2_data)
+        xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF2_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf2_data[xmin:xmax+1].min()
+            ymax = self.xrf2_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF2_Axe.set_ylim(ymin-dy, ymax+dy)
+        self.XRF_Canvas.draw()
+
+    def XRF2_Plot(self, index=None):
+
+        self.XRF2_Axe.cla()
+        if index == None:
+            index = int(self.XRF_Plot_HScale_Adjustment.get_value())
+        if self.xrf2_spec == 0:
+            self.xrf2_data = self.xrf_data[:4,index].mean(0)
+        elif self.xrf2_spec == 8:
+            self.xrf2_data = self.xrf_data[4,index]
+        else:
+            self.xrf2_data = self.xrf_data[self.xrf2_spec-1,index]
+        self.XRF2_Axe.plot(self.xrf2_data)
+        xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF2_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf2_data[xmin:xmax+1].min()
+            ymax = self.xrf2_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF2_Axe.set_ylim(ymin-dy, ymax+dy)
+
+
+    def XRF1_Vscale_Changed(self, widget):
+
+        xmin = int(self.XRF1_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF1_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF1_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf1_data[xmin:xmax+1].min()
+            ymax = self.xrf1_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF1_Axe.set_ylim(ymin-dy, ymax+dy)
+            self.XRF_Canvas.draw()
+
+
+    def XRF2_Vscale_Changed(self, widget):
+
+        xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF2_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf2_data[xmin:xmax+1].min()
+            ymax = self.xrf2_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF2_Axe.set_ylim(ymin-dy, ymax+dy)
+        self.XRF1_Vmin_HScale_Adjustment.handler_block(self.XRF1_Vmin_Changed_Handler)
+        self.XRF1_Vmin_HScale_Adjustment.set_value(xmin)
+        self.XRF1_Vmin_HScale_Adjustment.handler_unblock(self.XRF1_Vmin_Changed_Handler)
+        self.XRF1_Vmax_HScale_Adjustment.handler_block(self.XRF1_Vmax_Changed_Handler)
+        self.XRF1_Vmax_HScale_Adjustment.set_value(xmax)
+        self.XRF1_Vmax_HScale_Adjustment.handler_unblock(self.XRF1_Vmax_Changed_Handler)
+        self.XRF1_Vscale_Changed(None)
+       
+
+    def XRF1_Spec_Changed(self, widget, flag):
+
+        self.xrf1_spec = int(flag)
+        self.XRF1_Plot()
+        self.XRF_Canvas.draw()
+
+    def XRF2_Spec_Changed(self, widget, flag):
+
+        self.xrf2_spec = int(flag)
+        self.XRF2_Plot()
+        self.XRF_Canvas.draw()
+
+    def XRF_Plot_HScale_Changed(self, widget):
+
+        self.XRF1_Plot()
+        self.XRF2_Plot()
+        self.XRF_Canvas.draw()
+
+    def XRF1_Plot(self, index=None):
+
+        self.XRF1_Axe.cla()
+        if index == None:
+            index = int(self.XRF_Plot_HScale_Adjustment.get_value())
+        if self.xrf1_spec == 0:
+            self.xrf1_data = self.xrf_data[:4,index].mean(0)
+        elif self.xrf1_spec == 8:
+            self.xrf1_data = self.xrf_data[4,index]
+        else:
+            self.xrf1_data = self.xrf_data[self.xrf1_spec-1,index]
+        self.XRF1_Axe.plot(self.xrf1_data)
+        xmin = int(self.XRF1_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF1_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF1_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf1_data[xmin:xmax+1].min()
+            ymax = self.xrf1_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF1_Axe.set_ylim(ymin-dy, ymax+dy)
+
+    def XRF2_Plot(self, index=None):
+
+        self.XRF2_Axe.cla()
+        if index == None:
+            index = int(self.XRF_Plot_HScale_Adjustment.get_value())
+        if self.xrf2_spec == 0:
+            self.xrf2_data = self.xrf_data[:4,index].mean(0)
+        elif self.xrf2_spec == 8:
+            self.xrf2_data = self.xrf_data[4,index]
+        else:
+            self.xrf2_data = self.xrf_data[self.xrf2_spec-1,index]
+        self.XRF2_Axe.plot(self.xrf2_data)
+        xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
+        xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
+        if xmin < xmax:
+            self.XRF2_Axe.set_xlim(xmin-1, xmax+2)
+            ymin = self.xrf2_data[xmin:xmax+1].min()
+            ymax = self.xrf2_data[xmin:xmax+1].max()
+            dy = (ymax-ymin)*0.05
+            self.XRF2_Axe.set_ylim(ymin-dy, ymax+dy)
+
     #----------------1D Plot related callbacks----------------#
 
     def Plot1D_Canvas_Mouse_Hover(self, event):
@@ -433,7 +636,10 @@ class MyMainWindow:
             index = np.fabs(self.Plot1D_xdata - xpointer).argmin()
         except:
             return
-        if index != self.Image_Plot_HScale_Adjustment.get_value()+self.image_index_min:
+        if not self.xrf_mode:
+            index = self.image_index_min + index * self.nbin
+        if (self.xrf_mode and index != self.XRF_Plot_HScale_Adjustment.get_value()) or \
+           ((not self.xrf_mode) and  index != self.Image_Plot_HScale_Adjustment.get_value()):
             if event.button == 3: 
                 try:
                     for hl in self.Plot1D_Hightlight:
@@ -444,8 +650,10 @@ class MyMainWindow:
                 self.Plot1D_Hightlight = self.Plot1D_Axe.plot(x, y, "ro", markersize=10)
                 self.Plot1D_Canvas.draw()
                 self.Plot1D_Value_Label.set_text('[X = {0:.3f}] [Y = {1:.3f}]'.format(x, y))
-                index = self.image_index_min + index * self.nbin # added *self.nbin
-                self.Image_Plot_HScale_Adjustment.set_value(index)
+                if self.xrf_mode:
+                    self.XRF_Plot_HScale_Adjustment.set_value(index)
+                else:
+                    self.Image_Plot_HScale_Adjustment.set_value(index)
 
 
     def Plot1D_Vscale_Changed(self, widget):
@@ -491,18 +699,27 @@ class MyMainWindow:
         except:
             return
         if (x2 < dim_y-0.5) and (x2 > -.5) and (x1 > -0.5) and (x1 < dim_x-0.5):
-            index = int(self.image_index_min+(x1+x2*self.Plot2D_ydata.shape[1])*self.nbin)
-            if index != self.Image_Plot_HScale_Adjustment.get_value():
+            if self.xrf_mode:
+                index = int(x1+x2*self.Plot2D_ydata.shape[1])
+            else:
+                index = int(self.image_index_min+(x1+x2*self.Plot2D_ydata.shape[1])*self.nbin)
+            if (self.xrf_mode and index != self.XRF_Plot_HScale_Adjustment.get_value()) or \
+               ((not self.xrf_mode) and index != self.Image_Plot_HScale_Adjustment.get_value()):
                 if event.button == 3:
                     self.Plot2D_P0_Label.set_text('P0 [X = {0:.3f}] [Y = {1:.3f}] [Z = {2:.3f}]'.format(self.Plot2D_xdata2[x2,x1], self.Plot2D_xdata1[x2,x1], self.Plot2D_ydata[x2,x1]))
-                    self.Image_Plot_HScale_Adjustment.set_value(index)
+                    if self.xrf_mode:
+                        self.XRF_Plot_HScale_Adjustment.set_value(index)
+                    else:
+                        self.Image_Plot_HScale_Adjustment.set_value(index)
                 elif event.button == 1:
                     lelements = self.Plot2D_P0_Label.get_text().split()
                     x0, y0 = float(lelements[3][:-1]), float(lelements[6][:-1])
                     self.Plot2D_P1_Label.set_text('P1 [X = {0:.3f}] [Y = {1:.3f}] [dX = {2:.3f}] [dY = {3:.3f}]'.format(self.Plot2D_xdata2[x2,x1], self.Plot2D_xdata1[x2,x1], self.Plot2D_xdata2[x2,x1]-x0, self.Plot2D_xdata1[x2,x1]-y0))
-
-        #elif event.xdata != None and event.ydata != None:
-        #    self.Plot2D_Value_Label.set_text('[X = {0:.3f}]  [Y = {1:.3f}]'.format(event.xdata, event.ydata))
+                    if self.xrf_mode:
+                        self.XRF1_Plot(index)
+                        self.XRF_Canvas.draw()
+                #elif event.xdata != None and event.ydata != None:
+                #    self.Plot2D_Value_Label.set_text('[X = {0:.3f}]  [Y = {1:.3f}]'.format(event.xdata, event.ydata))
     
 
     def Plot2D_AutoScale_toggled(self, widget):
@@ -611,6 +828,13 @@ class MyMainWindow:
                     self.Folder_Open()
                     self.Image_folder = os.path.join(os.path.abspath(os.path.join(self.MDA_folder, os.pardir)),"Images")
                     self.h5_folder = os.path.join(os.path.abspath(os.path.join(self.MDA_folder, os.pardir)),"h5")                
+                    try:
+                        self.sheet = self.client.open("S26_"+self.MDA_folder.split(os.sep)[-2])
+                    except Exception as e:
+                        print(e)
+                        self.sheet = None
+                    else:
+                        self.sheet = self.sheet.get_worksheet(0)
                 FileDialog.destroy()
             else:
                 FileDialog.destroy()
@@ -686,8 +910,9 @@ class MyMainWindow:
 
         if widget.get_active(): #the callback is invoked two times, deselecting one and selecing another
             self.cm = widget.get_label()
-            self.Image_Image.set_cmap(self.cm)
-            self.Image_Canvas.draw()
+            if not self.xrf_mode:
+                self.Image_Image.set_cmap(self.cm)
+                self.Image_Canvas.draw()
             self.Plot2D_Image.set_cmap(self.cm)
             self.Plot2D_Canvas.draw()
 
@@ -726,6 +951,14 @@ class MyMainWindow:
         else:
             self.pump_probe = False
 
+    def XRFModeToggled(self, widget):
+        
+        if widget.get_active():
+            self.xrf_mode = True
+            self.Image_Notebook.set_current_page(1)
+        else:
+            self.xrf_mode = False
+            self.Image_Notebook.set_current_page(0)
 
     def MainWindow_Destroy(self, widget): 
 
@@ -771,7 +1004,7 @@ class MyMainWindow:
         dialog = Gtk.AboutDialog()
         dialog.set_program_name("dude")
         dialog.set_comments("Diffraction User Data Explorer")
-        dialog.set_version("2.3.5")
+        dialog.set_version("2.7.0")
         dialog.set_website("https://hub.docker.com/r/danielzt12/dude")
         dialog.set_website_label("https://hub.docker.com/r/danielzt12/dude")
         dialog.get_child().get_children()[1].hide()
@@ -1063,8 +1296,13 @@ class MyMainWindow:
         self.Scan_ToolBox_Y_ComboBox.handler_block(self.Scan_ToolBox_Y_Changed_Handler)
         self.Scan_ToolBox_M_ComboBox.handler_block(self.Scan_ToolBox_M_Changed_Handler)
         self.MDA_Det_store.clear()
-        self.data = readMDA(mdapath, verbose=0)
+        self.data = readMDA(mdapath, verbose=0, maxdim=3 if self.xrf_mode else 2)
+        self.xrf_data = []
         ndim = len(self.data)-1 if self.data[0]["dimensions"][-1] != 2048 else len(self.data)-2
+        if self.xrf_mode:
+            for i in range(5):
+                self.xrf_data += [self.data[ndim+1].d[i].data]
+            self.xrf_data = np.array(self.xrf_data).reshape(5,-1,2048)
         for i in range(self.data[ndim].nd):
             dname = self.data[ndim].d[i].name
             self.MDA_Det_store.append([dname.replace("s26_eiger_cnm","eiger"), 1])
@@ -1074,144 +1312,150 @@ class MyMainWindow:
         self.Plot_Notebook.set_current_page(ndim-1)        
         self.Scan_ToolBox_Y_ComboBox.set_active(Scan_ToolBox_Y_ComboBox_Select)
 
-        if self.eiger_enabled:
-            h5_filename = [f.name for f in os.scandir(self.h5_folder) if "scan_{0}".format(self.MDA_File_ListStore[self.mda_selection_path[0]][0]) in f.name]
-            if len(h5_filename) == 1:
-                h5_filename = h5_filename[0]
-            else:
-                h5_index = np.array([int(f.split(".")[0].split("_")[-1]) for f in h5_filename])
-                h5_filename = np.take(h5_filename, h5_index.argsort())[0]
-            try:
-                self.h5.close()
-            except Exception as e:
-                pass
-            try:
-                self.h5 = h5py.File(os.path.join(self.h5_folder, h5_filename), 'r')
-            except Exception as e:
-                self.image_index_max = -1
-            else:
-                self.image_index_max = self.h5['entry/data/data'].shape[0]-1
-                self.image_index_min = 0
-                self.nbin = 1
-                if hasattr(self, "ShowMetadata"):
-                    self.ShowMetadata.h5 = self.h5
-                    self.ShowMetadata.update_keystore()
-                    print("updating metadata")
-                
+        if self.xrf_mode:
+            nspec = self.xrf_data.shape[1] if ndim == 1 else self.xrf_data.shape[1]*self.xrf_data.shape[2]
+            self.XRF_Plot_HScale_Adjustment.set_upper(nspec-1)
+            self.XRF_Plot_HScale_Adjustment.set_lower(0)
+            self.XRF_Plot_HScale_Adjustment.set_value(0)
         else:
-            self.image_path = os.path.join(self.Image_folder, mdapath.split(".")[0].split("_")[-1].lstrip("0"))
-            # os.chmod(self.image_path, 0o777)
-            if self.pilatus_enabled == True:
-                self.image_list = [imagefile.name for imagefile in os.scandir(self.image_path) if ('.tif' in imagefile.name and 'il' in imagefile.name)]
-            else:
-                self.image_list = [imagefile.name for imagefile in os.scandir(self.image_path) if ('.tif' in imagefile.name and 'il' not in imagefile.name)]
-            self.tif_index = np.array([int(filename.split(".")[0].split("_")[-1]) for filename in self.image_list])
-            self.image_list = np.take(self.image_list , self.tif_index.argsort())
-            self.nbin = 1
-            if ndim == 2:
-                self.ntiff = self.data[0]['dimensions'][0] * self.data[0]['dimensions'][1]
-                for i in range(self.data[ndim].nd):
-                    dname = self.data[ndim].d[i].name
-                    if "FileNumber" in dname:
-                        mda_index = np.array(self.data[2].d[i].data).flatten()
-                #print("a,",mda_index)
-                print (mda_index.max(), self.tif_index.max(), mda_index.min(), self.tif_index.min())
-            else:
-                self.ntiff = self.data[0]['dimensions'][0]
-            if len(self.image_list) != self.ntiff:
-                print ("I only print this because the file saving here has been messy!")
-                print ("Expecting {0} files but got {1} instead".format(self.ntiff, len(self.image_list)))
-                if ndim == 1:
-                    if self.ntiff > len(self.image_list):
-                        print ("I suppose the scan is interrupted and will not attempt to correct that")
-                    else:
-                        if len(self.image_list)%self.ntiff == 0:
-                            self.nbin = max(1,int(len(self.image_list)/self.ntiff))
-                            print ("I suppose the scan has {0} repeated measurement for each point".format(self.nbin))
-                            self.image_list = self.image_list[0::self.nbin]
-                        else:
-                            print ("There is a chance that files are being saved into the wrong folder. Please correct manually 1!")
+            if self.eiger_enabled:
+                h5_filename = [f.name for f in os.scandir(self.h5_folder) if "scan_{0}".format(self.MDA_File_ListStore[self.mda_selection_path[0]][0]) in f.name]
+                if len(h5_filename) == 1:
+                    h5_filename = h5_filename[0]
                 else:
-                    if len(self.image_list) > self.ntiff:
-                        self.nbin = max(1,int(len(self.image_list)/self.ntiff))
-                        if len(self.image_list)%self.ntiff:
-                            self.nbin+=1
-                        if self.nbin>1:
-                            if not len(self.image_list)%self.ntiff:
+                    h5_index = np.array([int(f.split(".")[0].split("_")[-1]) for f in h5_filename])
+                    h5_filename = np.take(h5_filename, h5_index.argsort())[0]
+                try:
+                    self.h5.close()
+                except Exception as e:
+                    pass
+                try:
+                    self.h5 = h5py.File(os.path.join(self.h5_folder, h5_filename), 'r')
+                except Exception as e:
+                    self.image_index_max = -1
+                else:
+                    self.image_index_max = self.h5['entry/data/data'].shape[0]-1
+                    self.image_index_min = 0
+                    self.nbin = 1
+                    if hasattr(self, "ShowMetadata"):
+                        self.ShowMetadata.h5 = self.h5
+                        self.ShowMetadata.update_keystore()
+                        print("updating metadata")
+
+            else:
+                self.image_path = os.path.join(self.Image_folder, mdapath.split(".")[0].split("_")[-1].lstrip("0"))
+                # os.chmod(self.image_path, 0o777)
+                if self.pilatus_enabled == True:
+                    self.image_list = [imagefile.name for imagefile in os.scandir(self.image_path) if ('.tif' in imagefile.name and 'il' in imagefile.name)]
+                else:
+                    self.image_list = [imagefile.name for imagefile in os.scandir(self.image_path) if ('.tif' in imagefile.name and 'il' not in imagefile.name)]
+                self.tif_index = np.array([int(filename.split(".")[0].split("_")[-1]) for filename in self.image_list])
+                self.image_list = np.take(self.image_list , self.tif_index.argsort())
+                self.nbin = 1
+                if ndim == 2:
+                    self.ntiff = self.data[0]['dimensions'][0] * self.data[0]['dimensions'][1]
+                    for i in range(self.data[ndim].nd):
+                        dname = self.data[ndim].d[i].name
+                        if "FileNumber" in dname:
+                            mda_index = np.array(self.data[2].d[i].data).flatten()
+                    #print("a,",mda_index)
+                    print (mda_index.max(), self.tif_index.max(), mda_index.min(), self.tif_index.min())
+                else:
+                    self.ntiff = self.data[0]['dimensions'][0]
+                if len(self.image_list) != self.ntiff:
+                    print ("I only print this because the file saving here has been messy!")
+                    print ("Expecting {0} files but got {1} instead".format(self.ntiff, len(self.image_list)))
+                    if ndim == 1:
+                        if self.ntiff > len(self.image_list):
+                            print ("I suppose the scan is interrupted and will not attempt to correct that")
+                        else:
+                            if len(self.image_list)%self.ntiff == 0:
+                                self.nbin = max(1,int(len(self.image_list)/self.ntiff))
                                 print ("I suppose the scan has {0} repeated measurement for each point".format(self.nbin))
                                 self.image_list = self.image_list[0::self.nbin]
                             else:
-                                if mda_index.min() == self.tif_index.min():
-                                    inc_index = mda_index[1:] - mda_index[:-1]
-                                    hiccup_index = (inc_index == 2).nonzero()[0]
-                                    if inc_index.max() == 2:
-                                        print ("I suppose the scan has {0} repeated measurement for each point, but there are {1} images missing here!".format(self.nbin, self.ntiff*self.nbin-len(self.image_list)))
-                                        if inc_index[hiccup_index+1].sum() == 0 : # because a hiccup is always followed by a 0                                 
-                                            print("Experiencing {0} hiccups. Use only tif index.".format((inc_index==2).sum()))
-                                            mda_index[hiccup_index+1] -= 1
-                                            self.image_list = self.image_list[(mda_index-mda_index.min()).astype(int)]
+                                print ("There is a chance that files are being saved into the wrong folder. Please correct manually 1!")
+                    else:
+                        if len(self.image_list) > self.ntiff:
+                            self.nbin = max(1,int(len(self.image_list)/self.ntiff))
+                            if len(self.image_list)%self.ntiff:
+                                self.nbin+=1
+                            if self.nbin>1:
+                                if not len(self.image_list)%self.ntiff:
+                                    print ("I suppose the scan has {0} repeated measurement for each point".format(self.nbin))
+                                    self.image_list = self.image_list[0::self.nbin]
+                                else:
+                                    if mda_index.min() == self.tif_index.min():
+                                        inc_index = mda_index[1:] - mda_index[:-1]
+                                        hiccup_index = (inc_index == 2).nonzero()[0]
+                                        if inc_index.max() == 2:
+                                            print ("I suppose the scan has {0} repeated measurement for each point, but there are {1} images missing here!".format(self.nbin, self.ntiff*self.nbin-len(self.image_list)))
+                                            if inc_index[hiccup_index+1].sum() == 0 : # because a hiccup is always followed by a 0                                 
+                                                print("Experiencing {0} hiccups. Use only tif index.".format((inc_index==2).sum()))
+                                                mda_index[hiccup_index+1] -= 1
+                                                self.image_list = self.image_list[(mda_index-mda_index.min()).astype(int)]
+                                                self.image_list = self.image_list[0::self.nbin]
+                                            else:
+                                                print("Experiencing {0} hiccups, unable to correct.".format((inc_index==2).sum()))
+                                        elif inc_index.min() < 0 or inc_index.max() > 2:
+                                            print ("This should not happen. Please correct manually 5!")
+                                        elif inc_index.min() == 0 and (inc_index==0).sum() == mda_index.shape[0] - self.tif_index.shape[0] + hiccup_index.shape[0]:
+                                            print("Lost {0} images\nDeciding to trust mda index.".format((inc_index==0).sum()- hiccup_index.shape[0]))
                                             self.image_list = self.image_list[0::self.nbin]
                                         else:
-                                            print("Experiencing {0} hiccups, unable to correct.".format((inc_index==2).sum()))
-                                    elif inc_index.min() < 0 or inc_index.max() > 2:
-                                        print ("This should not happen. Please correct manually 5!")
-                                    elif inc_index.min() == 0 and (inc_index==0).sum() == mda_index.shape[0] - self.tif_index.shape[0] + hiccup_index.shape[0]:
-                                        print("Lost {0} images\nDeciding to trust mda index.".format((inc_index==0).sum()- hiccup_index.shape[0]))
-                                        self.image_list = self.image_list[0::self.nbin]
+                                            print("Dunno what to do 7!")
                                     else:
-                                        print("Dunno what to do 7!")
+                                        print("Dunno what to do 6!")
+                            else:
+                                if mda_index.max() < self.tif_index.max():
+                                    if mda_index.min() == self.tif_index.min():
+                                        print ("Ignoring {0} extra images in the folder.\nThey might belong to the next scan.".format(self.tif_index.max() - mda_index.max()))
+                                        self.image_list = self.image_list[self.tif_index<=mda_index.max()]
+                                        self.tif_index = self.tif_index[self.tif_index<=mda_index.max()]
+                                    else:
+                                        print ("There is a chance that files are being saved into the wrong folder. Please correct manually 2!")
                                 else:
-                                    print("Dunno what to do 6!")
+                                    if mda_index.max() == self.tif_index.max() and mda_index.min() == self.tif_index.min() +1:
+                                        print ("This bug is new in 2019, the mda index is shifted by 1 with regard to the tif index, but strangely for these long scans there is one more point in the beginning")
+                                        self.image_list = self.image_list[:-1]
+                                    else:
+                                        print ("This should not happen. Please correct manually 3!")
                         else:
-                            if mda_index.max() < self.tif_index.max():
-                                if mda_index.min() == self.tif_index.min():
-                                    print ("Ignoring {0} extra images in the folder.\nThey might belong to the next scan.".format(self.tif_index.max() - mda_index.max()))
-                                    self.image_list = self.image_list[self.tif_index<=mda_index.max()]
-                                    self.tif_index = self.tif_index[self.tif_index<=mda_index.max()]
+                            if mda_index.min() == self.tif_index.min():
+                                inc_index = mda_index[1:] - mda_index[:-1]
+                                hiccup_index = (inc_index == 2).nonzero()[0]
+                                if inc_index.min() == 0 and (inc_index==0).sum() == mda_index.shape[0] - self.tif_index.shape[0] + hiccup_index.shape[0]:
+                                    print("Lost {0} images\nDeciding to trust mda index.".format((inc_index==0).sum()- hiccup_index.shape[0]))
+                                    self.image_list = self.image_list[(mda_index-mda_index.min()).astype(int)]
+                                elif inc_index.max() == 2:
+                                    if inc_index[hiccup_index+1].sum() == 0 : # because a hiccup is always followed by a 0
+                                        print("Experiencing {0} hiccups. Use only tif index.".format((inc_index==2).sum()))
+                                        mda_index[hiccup_index+1] -= 1
+                                        self.image_list = self.image_list[mda_index]
+                                    else:
+                                        print("Experiencing {0} hiccups, unable to correct.".format((inc_index==2).sum()))
+                                elif inc_index.min() < 0 or inc_index.max() > 2:
+                                    print ("This should not happen. Please correct manually 4!")
                                 else:
-                                    print ("There is a chance that files are being saved into the wrong folder. Please correct manually 2!")
+                                    print("Dunno what to do 8!")
                             else:
-                                if mda_index.max() == self.tif_index.max() and mda_index.min() == self.tif_index.min() +1:
-                                    print ("This bug is new in 2019, the mda index is shifted by 1 with regard to the tif index, but strangely for these long scans there is one more point in the beginning")
-                                    self.image_list = self.image_list[:-1]
+                                if mda_index.min() == self.tif_index.min() +1:
+                                    print ("This bug is new in 2019, the mda index is shifted by 1 with regard to the tif index, and I suppose you interrupted the scan. Other than that all is well")
                                 else:
-                                    print ("This should not happen. Please correct manually 3!")
-                    else:
-                        if mda_index.min() == self.tif_index.min():
-                            inc_index = mda_index[1:] - mda_index[:-1]
-                            hiccup_index = (inc_index == 2).nonzero()[0]
-                            if inc_index.min() == 0 and (inc_index==0).sum() == mda_index.shape[0] - self.tif_index.shape[0] + hiccup_index.shape[0]:
-                                print("Lost {0} images\nDeciding to trust mda index.".format((inc_index==0).sum()- hiccup_index.shape[0]))
-                                self.image_list = self.image_list[(mda_index-mda_index.min()).astype(int)]
-                            elif inc_index.max() == 2:
-                                if inc_index[hiccup_index+1].sum() == 0 : # because a hiccup is always followed by a 0
-                                    print("Experiencing {0} hiccups. Use only tif index.".format((inc_index==2).sum()))
-                                    mda_index[hiccup_index+1] -= 1
-                                    self.image_list = self.image_list[mda_index]
-                                else:
-                                    print("Experiencing {0} hiccups, unable to correct.".format((inc_index==2).sum()))
-                            elif inc_index.min() < 0 or inc_index.max() > 2:
-                                print ("This should not happen. Please correct manually 4!")
-                            else:
-                                print("Dunno what to do 8!")
-                        else:
-                            if mda_index.min() == self.tif_index.min() +1:
-                                print ("This bug is new in 2019, the mda index is shifted by 1 with regard to the tif index, and I suppose you interrupted the scan. Other than that all is well")
-                            else:
-                                print ("There is a chance that files are being saved into the wrong folder. Please correct manually!")
-            if self.tif_index.shape[0]:
-                self.image_index_min = self.tif_index.min()
-                self.image_index_max = self.tif_index.max()
-                ###self.image_index_min = mda_index.min()
-                ###self.image_index_max = mda_index.max()
+                                    print ("There is a chance that files are being saved into the wrong folder. Please correct manually!")
+                if self.tif_index.shape[0]:
+                    self.image_index_min = self.tif_index.min()
+                    self.image_index_max = self.tif_index.max()
+                    ###self.image_index_min = mda_index.min()
+                    ###self.image_index_max = mda_index.max()
 
-        self.Image_Plot_HScale_Adjustment.set_upper(self.image_index_max)
-        self.Image_Plot_HScale_Adjustment.set_lower(self.image_index_min)
-        if self.Image_Plot_HScale_Adjustment.get_value() == 0:
-            self.Image_Plot_HScale_Changed(self.Image_Plot_HScale_Adjustment)
-        else:
-            self.Image_Plot_HScale_Adjustment.set_value(self.image_index_min)
-        self.Image_Plot_HScale_Adjustment.set_step_increment(self.nbin)
+            self.Image_Plot_HScale_Adjustment.set_upper(self.image_index_max)
+            self.Image_Plot_HScale_Adjustment.set_lower(self.image_index_min)
+            if self.Image_Plot_HScale_Adjustment.get_value() == 0:
+                self.Image_Plot_HScale_Changed(self.Image_Plot_HScale_Adjustment)
+            else:
+                self.Image_Plot_HScale_Adjustment.set_value(self.image_index_min)
+            self.Image_Plot_HScale_Adjustment.set_step_increment(self.nbin)
         self.Scan_ToolBox_CustomROI_Entry.set_sensitive(False)
         self.Scan_ToolBox_CustomROI_Add_Button.set_sensitive(False)
         self.Scan_ToolBox_CustomROI_Sum_Button.set_sensitive(False)
@@ -1253,7 +1497,45 @@ class MyMainWindow:
         self.MDA_File_TreeView.get_selection().handler_unblock(self.MDA_File_TreeView_Selection_Changed_Handler)#unstable
         if hasattr(self, "MDA_cursor_current"):
             self.MDA_File_TreeView.set_cursor(self.MDA_cursor_current)#unstable
-        
+
+    def Upload_To_Logbook(self, widget, flag):
+
+        folder_id = '1HaYq1NBpA5CTgdP1Y__rOPwpbRoeL6Vo'
+        filename = str(uuid.uuid4())+'.jpg'
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id]
+        }
+        filename = os.path.join("/tmp", filename)
+        if flag == 0:
+            self.Image_Figure.savefig(filename, bbox_inches='tight')
+            self.Image_Canvas.draw() # somehow the image will just disappear, try to fix that
+        elif flag == 1:
+            self.Plot1D_Figure.savefig(filename, bbox_inches='tight')
+            self.Plot1D_Canvas.draw()  # somehow the image will just disappear, try to fix that
+        elif flag == 2:
+            self.Plot2D_Figure.savefig(filename, bbox_inches='tight')
+            self.Plot2D_Canvas.draw()  # somehow the image will just disappear, try to fix that
+        else:
+            self.XRF_Figure.savefig(filename, bbox_inches='tight')
+            self.XRF_Canvas.draw()  # somehow the image will just disappear, try to fix that
+        media = MediaFileUpload(filename,
+                                mimetype='image/jpeg',
+                                resumable=False)
+        newfile = self.service.files().create(body=file_metadata,
+                                              media_body=media,
+                                              fields='id').execute()
+                    
+        fileid = newfile.get('id')
+        permission = {'role': 'reader', 'type': 'anyone'}
+        self.service.permissions().create(fileId=fileid,body=permission).execute()
+        weblink = self.service.files().get(fileId=fileid,fields='webContentLink').execute()
+        scannum = self.MDA_File_ListStore[self.mda_selection_path[0]][0]
+        i_row = self.sheet.col_values(3).index(scannum)+2
+        #print(i_row)
+        content = "=IMAGE(\"{0}\", 1)".format(weblink['webContentLink'].replace("'",'"'))
+        self.sheet.insert_row(["","",str(scannum),"",content], i_row, value_input_option='USER_ENTERED')
+        set_row_height(self.sheet, str(i_row), 200)
                
     def Console_KeyPressed(self, widget, event):
 
@@ -1273,6 +1555,32 @@ class MyMainWindow:
  
 
     def __init__(self):
+
+        if os.path.exists("/home/sector26/pythonscripts/Tao/token.json"):
+            beamline = True
+            SCOPES = ['https://www.googleapis.com/auth/drive.file']
+            creds = Credentials.from_authorized_user_file('/home/sector26/pythonscripts/Tao/token.json', SCOPES)
+            # If there are no (valid) credentials available, let the user log in.
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    flow = InstalledAppFlow.from_client_secrets_file('/home/sector26/pythonscripts/Tao/client_secrets.json', SCOPES)
+                    creds = flow.run_local_server(port=0)
+                    # Save the credentials for the next run
+                with open('/home/sector26/pythonscripts/Tao/token.json', 'w') as token:
+                    token.write(creds.to_json())
+
+            self.service = build('drive', 'v3', credentials=creds)
+
+            SCOPES2 = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
+
+            creds2 = ServiceAccountCredentials.from_json_keyfile_name('/home/sector26/pythonscripts/Tao/automatedlogbook.json', SCOPES2)
+
+            self.client = gspread.authorize(creds2)
+        else:
+            beamline = False
+
 
         self.cm = "viridis"
         self.dimY = 1062
@@ -1452,6 +1760,8 @@ class MyMainWindow:
         self.Plot1D_LogX_ToggleButton.connect("toggled", self.Plot1D_Vscale_Changed)
         self.Plot1D_LogY_ToggleButton = Gtk.ToggleButton(label = " LogY ")
         self.Plot1D_LogY_ToggleButton.connect("toggled", self.Plot1D_Vscale_Changed)
+        Plot1D_Upload_Button = Gtk.Button(label = "+")
+        Plot1D_Upload_Button.connect("clicked", self.Upload_To_Logbook, 1)
         Plot1D_Canvas_Toolbar_VSeparator1 = Gtk.VSeparator()
         Plot1D_Canvas_Toolbar_VSeparator2 = Gtk.VSeparator()
 
@@ -1462,6 +1772,8 @@ class MyMainWindow:
         Plot1D_Canvas_Toolbar_HBox.pack_start(Plot1D_Canvas_Toolbar_VSeparator1, False, False, 3)
         Plot1D_Canvas_Toolbar_HBox.pack_start(self.Plot1D_LogX_ToggleButton, False, False, 0)
         Plot1D_Canvas_Toolbar_HBox.pack_start(self.Plot1D_LogY_ToggleButton, False, False, 0)
+        if beamline:
+            Plot1D_Canvas_Toolbar_HBox.pack_start(Plot1D_Upload_Button, False, False, 0)
         Plot1D_Canvas_Toolbar_HBox.pack_start(Plot1D_Canvas_Toolbar_VSeparator2, False, False, 3)
         Plot1D_Canvas_Toolbar_HBox.pack_end(self.Plot1D_Value_Label, False, False, 0)
 
@@ -1500,6 +1812,9 @@ class MyMainWindow:
         self.Plot2D_ScaleBar_ToggleButton.set_active(False)
         self.Plot2D_ScaleBar_ToggleButton.connect("toggled", self.Plot2D_ScaleBar_toggled)
 
+        Plot2D_Upload_Button = Gtk.Button(label = "+")
+        Plot2D_Upload_Button.connect("clicked", self.Upload_To_Logbook, 2)
+
         Plot2D_VSeperator = Gtk.VSeparator()
 
         self.Plot2D_Vmin_HScale_Adjustment = Gtk.Adjustment(value = 0, lower = 0, upper = 10000, step_increment = .1, page_increment = 1, page_size = 0)
@@ -1529,6 +1844,8 @@ class MyMainWindow:
         Plot2DToolbar_HBox1.pack_start(self.Plot2D_Log_ToggleButton, False, False, 0)
         Plot2DToolbar_HBox1.pack_start(self.Plot2D_AutoScale_ToggleButton, False, False, 0)
         Plot2DToolbar_HBox1.pack_start(self.Plot2D_ScaleBar_ToggleButton, False, False, 0)
+        if beamline:
+           Plot2DToolbar_HBox1.pack_start(Plot2D_Upload_Button, False, False, 0)
         Plot2DToolbar_HBox1.pack_start(Plot2D_VSeperator, False, False, 3)
         Plot2DToolbar_HBox1.pack_start(self.Plot2D_Vmin_HScale, True, True, 0)
         Plot2DToolbar_HBox1.pack_start(self.Plot2D_Vmax_HScale, True, True, 0)
@@ -1588,6 +1905,8 @@ class MyMainWindow:
         self.Image_AutoScale_ToggleButton = Gtk.ToggleButton(label = "Auto")
         self.Image_AutoScale_ToggleButton.set_active(True)
         self.Image_AutoScale_ToggleButton.connect("toggled", self.Image_AutoScale_toggled)
+        Image_Upload_Button = Gtk.Button(label = "+")
+        Image_Upload_Button.connect("clicked", self.Upload_To_Logbook, 0)
 
         self.Image_Vmin_HScale_Adjustment = Gtk.Adjustment(value = 0, lower = 0, upper = 10000, step_increment = 1, page_increment = 10, page_size = 0)
         self.Image_Vmin_Changed_Handler = self.Image_Vmin_HScale_Adjustment.connect("value_changed", self.Image_Vscale_Changed)
@@ -1628,6 +1947,8 @@ class MyMainWindow:
         Image_Toolbar_HBox2.pack_start(self.Image_ZoomOut_Button, False, False, 3)
         Image_Toolbar_HBox2.pack_start(self.Image_Log_ToggleButton, False, False, 3)
         Image_Toolbar_HBox2.pack_start(self.Image_AutoScale_ToggleButton, False, False, 3)
+        if beamline:
+            Image_Toolbar_HBox2.pack_start(Image_Upload_Button, False, False, 0)
         Image_Toolbar_HBox2.pack_start(self.Image_Plot_HScale, False, False, 0)
         Image_Toolbar_HBox2.pack_end(self.Image_Value_Label, False, False, 0)
 
@@ -1642,6 +1963,166 @@ class MyMainWindow:
         Image_VBox.pack_start(Image_Toolbar_VBox, False, False, 0)
 
         Image_VBox.set_size_request(920,1000)
+
+        ###
+        self.XRF_Figure = Figure()
+        self.XRF1_Axe = self.XRF_Figure.add_axes([0.08, 0.55, 0.9, 0.43])
+        self.XRF2_Axe = self.XRF_Figure.add_axes([0.08, 0.05, 0.9, 0.43])
+        self.XRF_Canvas = FigureCanvas(self.XRF_Figure)
+        
+        #self.XRF_Canvas_Figure_Enter_Event = self.XRF_Canvas.mpl_connect('figure_enter_event', self.XRF_Canvas_Figure_Entered)
+        #self.XRF_Canvas_Button_Press_Event = self.XRF_Canvas.mpl_connect('button_press_event', self.XRF_Canvas_Button_Pressed)
+        #self.XRF_Canvas_Button_Scroll_Event = self.XRF_Canvas.mpl_connect('scroll_event', self.XRF_Canvas_Button_Scrolled)
+        #self.XRF_Canvas_Mouse_Hover_Event = self.XRF_Canvas.mpl_connect('motion_notify_event', self.XRF_Canvas_Mouse_Hover)
+
+        self.XRF_ScrolledWindow = Gtk.ScrolledWindow()
+        self.XRF_ScrolledWindow.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.XRF_ScrolledWindow.add(self.XRF_Canvas)
+        self.XRF_ScrolledWindow_EventBox = Gtk.EventBox()
+        self.XRF_ScrolledWindow_EventBox.add(self.XRF_ScrolledWindow)
+
+        self.XRF_Plot_HScale_Adjustment = Gtk.Adjustment(value = 0, lower = 0, upper = 100000, step_increment = 1, page_increment = 1, page_size = 0)
+        self.XRF_Plot_HScale_Adjustment.connect("value_changed", self.XRF_Plot_HScale_Changed)
+        self.XRF_Plot_HScale = Gtk.HScale()
+        self.XRF_Plot_HScale.set_adjustment(self.XRF_Plot_HScale_Adjustment)
+        self.XRF_Plot_HScale.set_size_request(350, 20)
+        self.XRF_Plot_HScale.set_value_pos(Gtk.PositionType.LEFT)
+        self.XRF_Plot_HScale.set_digits(0)
+
+        XRF_Sum_Button = Gtk.Button(label = "sum")
+        XRF_Sum_Button.connect("clicked", self.XRF_Sum)
+
+        XRF_RoI1_Button = Gtk.Button(label = "roi1")
+        XRF_RoI1_Button.connect("clicked", self.XRF_RoI, 1)
+
+        XRF_RoI2_Button = Gtk.Button(label = "roi2")
+        XRF_RoI2_Button.connect("clicked", self.XRF_RoI, 2)
+
+        XRF_Upload_Button = Gtk.Button(label = "+")
+        XRF_Upload_Button.connect("clicked", self.Upload_To_Logbook, 3)
+
+        self.XRF1_Vmin_HScale_Adjustment = Gtk.Adjustment(value = 0, lower = 0, upper = 2047, step_increment = 1, page_increment = 10, page_size = 0)
+        self.XRF1_Vmin_Changed_Handler = self.XRF1_Vmin_HScale_Adjustment.connect("value_changed", self.XRF1_Vscale_Changed)
+        self.XRF1_Vmin_HScale = Gtk.Scale(orientation = Gtk.Orientation.HORIZONTAL)
+        self.XRF1_Vmin_HScale.set_adjustment(self.XRF1_Vmin_HScale_Adjustment)
+        self.XRF1_Vmin_HScale.set_size_request(20, 20)
+        self.XRF1_Vmin_HScale.set_value_pos(Gtk.PositionType.LEFT)
+        self.XRF1_Vmin_HScale.set_digits(0)
+        XRF1_Vmin_Label = Gtk.Label()
+        XRF1_Vmin_Label.set_text('Vmin:')
+
+        XRF1_Spec0_RadioButton = Gtk.RadioButton(group=None, label="1-4")
+        XRF1_Spec0_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 0)
+        XRF1_Spec1_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="1")
+        XRF1_Spec1_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 1)
+        XRF1_Spec2_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="2")
+        XRF1_Spec2_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 2)
+        XRF1_Spec3_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="3")
+        XRF1_Spec3_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 3)
+        XRF1_Spec4_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="4")
+        XRF1_Spec4_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 4)
+        XRF1_Spec8_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="8")
+        XRF1_Spec8_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 8)
+        self.xrf1_spec = 0
+
+        self.XRF1_Vmax_HScale_Adjustment = Gtk.Adjustment(value = 2047, lower = 0, upper = 2047, step_increment = 1, page_increment = 10, page_size = 0)
+        self.XRF1_Vmax_Changed_Handler = self.XRF1_Vmax_HScale_Adjustment.connect("value_changed", self.XRF1_Vscale_Changed)
+        self.XRF1_Vmax_HScale = Gtk.HScale()
+        self.XRF1_Vmax_HScale.set_adjustment(self.XRF1_Vmax_HScale_Adjustment)
+        self.XRF1_Vmax_HScale.set_size_request(20, 20)
+        self.XRF1_Vmax_HScale.set_value_pos(Gtk.PositionType.LEFT)
+        self.XRF1_Vmax_HScale.set_digits(0)
+        XRF1_Vmax_Label = Gtk.Label()
+        XRF1_Vmax_Label.set_text('Vmax:')
+
+        self.XRF2_Vmin_HScale_Adjustment = Gtk.Adjustment(value = 0, lower = 0, upper = 2047, step_increment = 1, page_increment = 10, page_size = 0)
+        self.XRF2_Vmin_Changed_Handler = self.XRF2_Vmin_HScale_Adjustment.connect("value_changed", self.XRF2_Vscale_Changed)
+        self.XRF2_Vmin_HScale = Gtk.Scale(orientation = Gtk.Orientation.HORIZONTAL)
+        self.XRF2_Vmin_HScale.set_adjustment(self.XRF2_Vmin_HScale_Adjustment)
+        self.XRF2_Vmin_HScale.set_size_request(20, 20)
+        self.XRF2_Vmin_HScale.set_value_pos(Gtk.PositionType.LEFT)
+        self.XRF2_Vmin_HScale.set_digits(0)
+        XRF2_Vmin_Label = Gtk.Label()
+        XRF2_Vmin_Label.set_text('Vmin:')
+
+        XRF2_Spec0_RadioButton = Gtk.RadioButton(group=None, label="1-4")
+        XRF2_Spec0_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 0)
+        XRF2_Spec1_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="1")
+        XRF2_Spec1_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 1)
+        XRF2_Spec2_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="2")
+        XRF2_Spec2_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 2)
+        XRF2_Spec3_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="3")
+        XRF2_Spec3_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 3)
+        XRF2_Spec4_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="4")
+        XRF2_Spec4_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 4)
+        XRF2_Spec8_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="8")
+        XRF2_Spec8_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 8)
+        self.xrf2_spec = 0
+
+        self.XRF2_Vmax_HScale_Adjustment = Gtk.Adjustment(value = 2047, lower = 0, upper = 2047, step_increment = 1, page_increment = 10, page_size = 0)
+        self.XRF2_Vmax_Changed_Handler = self.XRF2_Vmax_HScale_Adjustment.connect("value_changed", self.XRF2_Vscale_Changed)
+        self.XRF2_Vmax_HScale = Gtk.HScale()
+        self.XRF2_Vmax_HScale.set_adjustment(self.XRF2_Vmax_HScale_Adjustment)
+        self.XRF2_Vmax_HScale.set_size_request(20, 20)
+        self.XRF2_Vmax_HScale.set_value_pos(Gtk.PositionType.LEFT)
+        self.XRF2_Vmax_HScale.set_digits(0)
+        XRF2_Vmax_Label = Gtk.Label()
+        XRF2_Vmax_Label.set_text('Vmax:')
+
+        XRF_Toolbar_HBox1 = Gtk.HBox(homogeneous = False, spacing = 3)
+        XRF_Toolbar_HBox1.set_border_width(3)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec0_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec1_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec2_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec3_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec4_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec8_RadioButton, False, False, 0)
+        #XRF_Toolbar_HBox1.pack_start(XRF1_Vmin_Label, False, False, 3)
+        XRF_Toolbar_HBox1.pack_start(self.XRF1_Vmin_HScale, True, True, 3)
+        #XRF_Toolbar_HBox1.pack_start(XRF1_Vmax_Label, False, False, 3)
+        XRF_Toolbar_HBox1.pack_start(self.XRF1_Vmax_HScale, True, True, 3)
+
+        XRF_Toolbar_HBox2 = Gtk.HBox(homogeneous = False, spacing = 3)
+        XRF_Toolbar_HBox2.set_border_width(3)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec0_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec1_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec2_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec3_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec4_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec8_RadioButton, False, False, 0)
+        #XRF_Toolbar_HBox2.pack_start(XRF2_Vmin_Label, False, False, 3)
+        XRF_Toolbar_HBox2.pack_start(self.XRF2_Vmin_HScale, True, True, 3)
+        #XRF_Toolbar_HBox2.pack_start(XRF2_Vmax_Label, False, False, 3)
+        XRF_Toolbar_HBox2.pack_start(self.XRF2_Vmax_HScale, True, True, 3)
+
+        XRF_Toolbar_HBox3 = Gtk.HBox(homogeneous = False, spacing = 3)
+        XRF_Toolbar_HBox3.set_border_width(3)
+        if beamline:
+            XRF_Toolbar_HBox3.pack_start(XRF_Upload_Button, False, False, 0)
+        XRF_Toolbar_HBox3.pack_start(XRF_Sum_Button, False, False, 0)
+        XRF_Toolbar_HBox3.pack_start(XRF_RoI1_Button, False, False, 0)
+        XRF_Toolbar_HBox3.pack_start(XRF_RoI2_Button, False, False, 0)
+        XRF_Toolbar_HBox3.pack_end(self.XRF_Plot_HScale, False, False, 0)
+        
+
+        XRF_Toolbar_VBox = Gtk.VBox()
+        XRF_Toolbar_VBox.set_border_width(3)
+        XRF_Toolbar_VBox.pack_start(XRF_Toolbar_HBox1, False, False, 0)
+        XRF_Toolbar_VBox.pack_start(XRF_Toolbar_HBox2, False, False, 0)
+        XRF_Toolbar_VBox.pack_start(XRF_Toolbar_HBox3, False, False, 0)
+
+        XRF_VBox = Gtk.VBox(homogeneous = False, spacing = 3)
+        XRF_VBox.set_border_width(3)
+        XRF_VBox.pack_start(self.XRF_ScrolledWindow_EventBox, True, True, 0)
+        XRF_VBox.pack_start(XRF_Toolbar_VBox, False, False, 0)
+
+        XRF_VBox.set_size_request(920,1000)
+        ###
+
+        self.Image_Notebook = Gtk.Notebook()
+        self.Image_Notebook.set_show_tabs(False)
+        self.Image_Notebook.append_page(Image_VBox)
+        self.Image_Notebook.append_page(XRF_VBox)
 
         self.Console_Entry = Gtk.Entry()
         self.Console_Entry.connect('activate', self.Console_Command_Sent)
@@ -1670,90 +2151,93 @@ class MyMainWindow:
         FileMenu.add(FileRefreshMenuItem)
         FileMenu.add(FileQuitMenuItem)
         
-        SettingMenuItem = Gtk.MenuItem(label = "Setting")
-        SettingMenu = Gtk.Menu()
-        SettingMenuItem.set_submenu(SettingMenu)
-        SettingDetectorMenuItem = Gtk.MenuItem(label = "Detector")
-        SettingDetectorMenu = Gtk.Menu()
-        SettingDetectorMenuItem.set_submenu(SettingDetectorMenu)
-        SettingDetector0MenuItem = Gtk.RadioMenuItem(label="1028 x 1062")
-        SettingDetector0MenuItem.set_active(True)
-        SettingDetector0MenuItem.connect("activate", self.Detector_Changed)
-        SettingDetector1MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingDetector0MenuItem)
-        SettingDetector1MenuItem.set_label("516 x 516")
-        SettingDetector1MenuItem.connect("activate", self.Detector_Changed)
-        SettingDetector2MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingDetector0MenuItem)
-        SettingDetector2MenuItem.set_label("515 x 515")
-        SettingDetector2MenuItem.connect("activate", self.Detector_Changed)
-        SettingDetector3MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingDetector0MenuItem)
-        SettingDetector3MenuItem.set_label("256 x 256")
-        SettingDetector3MenuItem.connect("activate", self.Detector_Changed)
-        SettingDetector4MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingDetector0MenuItem)
-        SettingDetector4MenuItem.set_label("487 x 195")
-        SettingDetector4MenuItem.connect("activate", self.Detector_Changed)
-        SettingDetector5MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingDetector0MenuItem)
-        SettingDetector5MenuItem.set_label("1360 x 1024")
-        SettingDetector5MenuItem.connect("activate", self.Detector_Changed)
-        SettingDetectorMenu.add(SettingDetector0MenuItem)
-        SettingDetectorMenu.add(SettingDetector1MenuItem)
-        SettingDetectorMenu.add(SettingDetector2MenuItem)
-        SettingDetectorMenu.add(SettingDetector3MenuItem)
-        SettingDetectorMenu.add(SettingDetector4MenuItem)
-        SettingDetectorMenu.add(SettingDetector5MenuItem)
-        SettingColormapMenuItem = Gtk.MenuItem(label = "Colormap")
-        SettingColormapMenu = Gtk.Menu()
-        SettingColormapMenuItem.set_submenu(SettingColormapMenu)
-        SettingColormap0MenuItem = Gtk.RadioMenuItem(label="jet")
-        SettingColormap0MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap1MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap1MenuItem.set_label("binary")
-        SettingColormap1MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap2MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap2MenuItem.set_label("gray")
-        SettingColormap2MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap3MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap3MenuItem.set_label("hot")
-        SettingColormap3MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap4MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap4MenuItem.set_label("coolwarm")
-        SettingColormap4MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap5MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap5MenuItem.set_label("viridis")
-        SettingColormap5MenuItem.set_active(True)
-        SettingColormap5MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap6MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap6MenuItem.set_label("plasma")
-        SettingColormap6MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap7MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap7MenuItem.set_label("inferno")
-        SettingColormap7MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap8MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap8MenuItem.set_label("magma")
-        SettingColormap8MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormap9MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingColormap0MenuItem)
-        SettingColormap9MenuItem.set_label("cividis")
-        SettingColormap9MenuItem.connect("activate", self.Change_Colormap)
-        SettingColormapMenu.add(SettingColormap0MenuItem)
-        SettingColormapMenu.add(SettingColormap1MenuItem)
-        SettingColormapMenu.add(SettingColormap2MenuItem)
-        SettingColormapMenu.add(SettingColormap4MenuItem)
-        SettingColormapMenu.add(SettingColormap5MenuItem)
-        SettingColormapMenu.add(SettingColormap6MenuItem)
-        SettingColormapMenu.add(SettingColormap7MenuItem)
-        SettingColormapMenu.add(SettingColormap8MenuItem)
-        SettingColormapMenu.add(SettingColormap9MenuItem)
-        SettingSparseItem = Gtk.CheckMenuItem(label = "Sparse Matrix")
-        SettingSparseItem.set_active(True)
-        SettingSparseItem.connect("activate", self.SparseToggled)
-        SettingShowAngleItem = Gtk.CheckMenuItem(label = "Show Angle")
-        SettingShowAngleItem.set_active(False)
-        SettingShowAngleItem.connect("activate", self.ShowAngleToggled)
-        SettingDirtyFixItem = Gtk.CheckMenuItem(label = "Dirty Fix")
-        SettingDirtyFixItem.set_active(True)
-        SettingDirtyFixItem.connect("activate", self.DirtyFixToggled)
-        SettingPumpProbeItem = Gtk.CheckMenuItem(label = "Pump Probe")
-        SettingPumpProbeItem.set_active(False)
-        SettingPumpProbeItem.connect("activate", self.PumpProbeToggled)
+        SettingsMenuItem = Gtk.MenuItem(label = "Settings")
+        SettingsMenu = Gtk.Menu()
+        SettingsMenuItem.set_submenu(SettingsMenu)
+        SettingsDetectorMenuItem = Gtk.MenuItem(label = "Detector")
+        SettingsDetectorMenu = Gtk.Menu()
+        SettingsDetectorMenuItem.set_submenu(SettingsDetectorMenu)
+        SettingsDetector0MenuItem = Gtk.RadioMenuItem(label="1028 x 1062")
+        SettingsDetector0MenuItem.set_active(True)
+        SettingsDetector0MenuItem.connect("activate", self.Detector_Changed)
+        SettingsDetector1MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsDetector0MenuItem)
+        SettingsDetector1MenuItem.set_label("516 x 516")
+        SettingsDetector1MenuItem.connect("activate", self.Detector_Changed)
+        SettingsDetector2MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsDetector0MenuItem)
+        SettingsDetector2MenuItem.set_label("515 x 515")
+        SettingsDetector2MenuItem.connect("activate", self.Detector_Changed)
+        SettingsDetector3MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsDetector0MenuItem)
+        SettingsDetector3MenuItem.set_label("256 x 256")
+        SettingsDetector3MenuItem.connect("activate", self.Detector_Changed)
+        SettingsDetector4MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsDetector0MenuItem)
+        SettingsDetector4MenuItem.set_label("487 x 195")
+        SettingsDetector4MenuItem.connect("activate", self.Detector_Changed)
+        SettingsDetector5MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsDetector0MenuItem)
+        SettingsDetector5MenuItem.set_label("1360 x 1024")
+        SettingsDetector5MenuItem.connect("activate", self.Detector_Changed)
+        SettingsDetectorMenu.add(SettingsDetector0MenuItem)
+        SettingsDetectorMenu.add(SettingsDetector1MenuItem)
+        SettingsDetectorMenu.add(SettingsDetector2MenuItem)
+        SettingsDetectorMenu.add(SettingsDetector3MenuItem)
+        SettingsDetectorMenu.add(SettingsDetector4MenuItem)
+        SettingsDetectorMenu.add(SettingsDetector5MenuItem)
+        SettingsColormapMenuItem = Gtk.MenuItem(label = "Colormap")
+        SettingsColormapMenu = Gtk.Menu()
+        SettingsColormapMenuItem.set_submenu(SettingsColormapMenu)
+        SettingsColormap0MenuItem = Gtk.RadioMenuItem(label="jet")
+        SettingsColormap0MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap1MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap1MenuItem.set_label("binary")
+        SettingsColormap1MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap2MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap2MenuItem.set_label("gray")
+        SettingsColormap2MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap3MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap3MenuItem.set_label("hot")
+        SettingsColormap3MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap4MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap4MenuItem.set_label("coolwarm")
+        SettingsColormap4MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap5MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap5MenuItem.set_label("viridis")
+        SettingsColormap5MenuItem.set_active(True)
+        SettingsColormap5MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap6MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap6MenuItem.set_label("plasma")
+        SettingsColormap6MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap7MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap7MenuItem.set_label("inferno")
+        SettingsColormap7MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap8MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap8MenuItem.set_label("magma")
+        SettingsColormap8MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormap9MenuItem = Gtk.RadioMenuItem.new_from_widget(SettingsColormap0MenuItem)
+        SettingsColormap9MenuItem.set_label("cividis")
+        SettingsColormap9MenuItem.connect("activate", self.Change_Colormap)
+        SettingsColormapMenu.add(SettingsColormap0MenuItem)
+        SettingsColormapMenu.add(SettingsColormap1MenuItem)
+        SettingsColormapMenu.add(SettingsColormap2MenuItem)
+        SettingsColormapMenu.add(SettingsColormap4MenuItem)
+        SettingsColormapMenu.add(SettingsColormap5MenuItem)
+        SettingsColormapMenu.add(SettingsColormap6MenuItem)
+        SettingsColormapMenu.add(SettingsColormap7MenuItem)
+        SettingsColormapMenu.add(SettingsColormap8MenuItem)
+        SettingsColormapMenu.add(SettingsColormap9MenuItem)
+        SettingsSparseItem = Gtk.CheckMenuItem(label = "Sparse Matrix")
+        SettingsSparseItem.set_active(True)
+        SettingsSparseItem.connect("activate", self.SparseToggled)
+        SettingsShowAngleItem = Gtk.CheckMenuItem(label = "Show Angle")
+        SettingsShowAngleItem.set_active(False)
+        SettingsShowAngleItem.connect("activate", self.ShowAngleToggled)
+        SettingsDirtyFixItem = Gtk.CheckMenuItem(label = "Dirty Fix")
+        SettingsDirtyFixItem.set_active(True)
+        SettingsDirtyFixItem.connect("activate", self.DirtyFixToggled)
+        SettingsPumpProbeItem = Gtk.CheckMenuItem(label = "Pump Probe")
+        SettingsPumpProbeItem.set_active(False)
+        SettingsPumpProbeItem.connect("activate", self.PumpProbeToggled)
+        SettingsXRFModeItem = Gtk.CheckMenuItem(label = "XRF Mode")
+        SettingsXRFModeItem.set_active(False)
+        SettingsXRFModeItem.connect("activate", self.XRFModeToggled)
 
         AddonsMenuItem = Gtk.MenuItem(label = "Add-ons")
         AddonsMenu = Gtk.Menu()
@@ -1787,16 +2271,17 @@ class MyMainWindow:
         HelpAboutMenuItem.connect("activate", self.AboutThisProgram)
         HelpMenu.add(HelpAboutMenuItem)
         
-        SettingMenu.add(SettingDetectorMenuItem)
-        SettingMenu.add(SettingColormapMenuItem)
-        SettingMenu.add(SettingSparseItem)
-        SettingMenu.add(SettingShowAngleItem)
-        SettingMenu.add(SettingDirtyFixItem)
-        SettingMenu.add(SettingPumpProbeItem)
+        SettingsMenu.add(SettingsDetectorMenuItem)
+        SettingsMenu.add(SettingsColormapMenuItem)
+        SettingsMenu.add(SettingsSparseItem)
+        SettingsMenu.add(SettingsShowAngleItem)
+        SettingsMenu.add(SettingsDirtyFixItem)
+        SettingsMenu.add(SettingsPumpProbeItem)
+        SettingsMenu.add(SettingsXRFModeItem)
         
         MenuBar = Gtk.MenuBar()
         MenuBar.add(FileMenuItem)
-        MenuBar.add(SettingMenuItem)
+        MenuBar.add(SettingsMenuItem)
         MenuBar.add(AddonsMenuItem)
         MenuBar.add(HelpMenuItem)
         
@@ -1811,7 +2296,7 @@ class MyMainWindow:
         VBox1.pack_start(self.Plot_Notebook, False, False, 0)
         HBox2 = Gtk.HBox(homogeneous = False, spacing = 3)
         HBox2.pack_start(VBox1, False, False, 0)
-        HBox2.pack_start(Image_VBox, False, False, 0)
+        HBox2.pack_start(self.Image_Notebook, False, False, 0)
 
         # LV1
         Main_VBox = Gtk.VBox(homogeneous = False, spacing = 3)
@@ -1834,6 +2319,7 @@ class MyMainWindow:
         self.show_angle = False
         self.dirty_fix = True
         self.pump_probe = False
+        self.xrf_mode = False
 
 #------------------------Main------------------------------#          
 
