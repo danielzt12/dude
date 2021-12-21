@@ -12,6 +12,7 @@ from readMDA import *
 from matplotlib.figure import Figure
 from matplotlib import colors, patches
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
+import itertools
 
 
 def Display2Data(Axe, x, y):
@@ -99,10 +100,15 @@ class Figure_with_Projections:
                 except:
                     pass
                 lines = []
-                for f in figs:
-                    lines += [f.image_ax.axhline(y, color='k')]
-                    lines += [f.image_ax.axvline(x, color='k')]
-                    f.canvas.draw()
+                for i in range(len(figs)):
+                    lines += [figs[i].image_ax.axhline(y, color='k')]
+                    lines += [figs[i].image_ax.axvline(x, color='k')]
+                    figs[i].canvas.draw()
+                    figs[i].label1.set_text("Z {0}       ".format(data[i,y,x]))
+                #for f in figs:
+                #    lines += [f.image_ax.axhline(y, color='k')]
+                #    lines += [f.image_ax.axvline(x, color='k')]
+                #    f.canvas.draw()
             else:
                 if event.button == 1:
                     Image_Zooming = True
@@ -148,7 +154,7 @@ class Figure_with_Projections:
             
     def on_press(self, event):
 
-        global xlims, ylims, Image_Zoomed, data, colorscale, theta
+        global xlims, ylims, Image_Zoomed, data, colorscale, theta, cm1
         
         if event.key == "r":
             for f in figs:
@@ -226,6 +232,12 @@ class Figure_with_Projections:
                 elif colorscale == 3:
                     figs[i].image_im.set_norm(colors.LogNorm(max(1,dataraw[i].min()), dataraw[i].max()))
                 figs[i].canvas.draw()
+        elif event.key == "m":
+            cm1 = next(cm0)
+            for f in figs:
+                f.image_im.set_cmap(cm1)
+                f.canvas.draw()
+        
 
                 
             
@@ -241,7 +253,7 @@ class Figure_with_Projections:
         self.fig = Figure()
         self.image_ax = self.fig.add_axes([0,0,1,1])
         self.image_ax.set_axis_off()
-        self.image_im = self.image_ax.imshow(data[index], cmap='jet', norm=colors.Normalize(dataraw_min,dataraw_max), origin="lower", interpolation = "nearest", aspect="equal")
+        self.image_im = self.image_ax.imshow(data[index], cmap=cm1, norm=colors.Normalize(dataraw_min,dataraw_max), origin="lower", interpolation = "nearest", aspect="equal")
         self.image_ax.set_xlim(dim1_max-0.5, dim1_max*2-0.5)
         self.image_ax.set_ylim(dim0_max-0.5, dim0_max*2-0.5)
         self.canvas = FigureCanvas(self.fig)
@@ -271,6 +283,7 @@ class MainWindow():
         global dataraw, data, scannum, theta, dim0_max, dim1_max, xlims, ylims
         global figs, shift_file, Image_Panning, Image_Zooming, Image_Zoomed
         global colorscale, xstep, ystep, dataraw_max, dataraw_min
+        global cm0, cm1
 
         dataraw = []
         dataraw_max = 0
@@ -280,7 +293,6 @@ class MainWindow():
         figs = []
         dim0_max = 0
         dim1_max = 0
-        cm = dude.cm
         Image_Panning = False
         Image_Zooming = False
         Image_Zoomed = False
@@ -289,6 +301,10 @@ class MainWindow():
         ystep = []
         shift_file= os.path.join(os.path.abspath(os.path.join(dude.MDA_folder, os.pardir)),"Analysis", "shifts.txt")
         mdafiles = []
+
+        cm0 = itertools.cycle(["jet", "coolwarm", "viridis", "gray"])
+        cm1 = next(cm0)
+
         for row in dude.MDA_File_ListStore: 
             if row[11] == True: # row[11] is the multiselect toggle button
                 scannum += [int(row[0])]
@@ -306,6 +322,10 @@ class MainWindow():
             xstep += [np.int(np.round((mda[2].p[0].data[0][1]-mda[2].p[0].data[0][0])*1000,0))]
             # below it is assumed that you only use this on 2D data
             datatmp =  np.array(mda[2].d[dude.Scan_ToolBox_Y_ComboBox.get_active()].data)
+            if "eiger" in mda[2].d[dude.Scan_ToolBox_Y_ComboBox.get_active()].name and dude.dirty_fix:
+                datatmp2 = np.copy(datatmp).flatten()
+                datatmp2[:-1] = datatmp2[1:]
+                datatmp = datatmp2.reshape(datatmp.shape)
             dim0, dim1 = datatmp.shape
             dataraw += [datatmp]
             dataraw_max = max(dataraw_max, datatmp.max())
@@ -314,9 +334,9 @@ class MainWindow():
             if len(h5_filename):
                 h5_filename = os.path.join(dude.h5_folder, h5_filename[0])
                 #if os.path.exists(h5_filename):
-                h5 = h5py.File(h5_filename, 'r')
-                theta += [h5["/entry/instrument/26-ID-C/SAMPLE THETA"][()]]
-                h5.close()
+                with h5py.File(h5_filename, 'r') as h5:
+                    theta += [h5["/entry/instrument/26-ID-C/SAMPLE THETA"][()]]
+                #h5.close()
             else:
                 for ii in range(mda[2].nd):
                     if mda[2].d[ii].name == "atto2:PIC867:1:m1.RBV":
@@ -351,7 +371,7 @@ class MainWindow():
             figs += [Figure_with_Projections(i)]
             table.attach(figs[-1].vbox, i%ncols,i%ncols+1,i/ncols,i/ncols+1)
         
-        instruction_label = Gtk.Label("[left mouse: zoom in / add crosshair] [right mouse: manual shift] [r: reset zoom] [1: xcorr-otsu, 2: xcorr-mean, 3: sift linear, 4: sift log] [u: usable area] [s: save] [l: load] [c: change colorscale]")
+        instruction_label = Gtk.Label("[left mouse: zoom in / add crosshair] [right mouse: manual shift] [r: reset zoom] [1: xcorr-otsu, 2: xcorr-mean, 3: sift linear, 4: sift log] [u: usable area] [s: save] [l: load] [c: change colorscale] [m: change colormap]")
 
         table.set_row_spacings(3)  
         self.win = Gtk.Window()

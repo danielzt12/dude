@@ -60,9 +60,9 @@ class MainWindow:
                     if dude.eiger_enabled:
                         h5_filename = [f.name for f in os.scandir(dude.h5_folder) if "scan_{0}".format(row[0]) in f.name][0]
                         #print(h5_filename)
-                        h5 = h5py.File(os.path.join(dude.h5_folder, h5_filename), 'r')
-                        xdata2_0 = h5["/entry/instrument/26-ID-C/ATTO SAM Z"][()] 
-                        theta = h5["/entry/instrument/26-ID-C/SAMPLE THETA"][()]
+                        with h5py.File(os.path.join(dude.h5_folder, h5_filename), 'r') as h5:
+                            xdata2_0 = h5["/entry/instrument/26-ID-C/ATTO SAM Z"][()] 
+                            theta = h5["/entry/instrument/26-ID-C/SAMPLE THETA"][()]
                         #print(np.sin(np.radians(theta)))
                     else:
                         for d in mda[2].d:

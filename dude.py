@@ -18,6 +18,7 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import fabio
 import h5py
 import hdf5plugin
+import netCDF4
 from scipy import sparse
 from misc_dude import *
 import Shortcuts
@@ -296,19 +297,19 @@ class MyMainWindow:
                     # restore the clean slate background
                     self.Image_Canvas.restore_region(self.non_animated_background)
                     if self.Image_xstart > self.Image_xend: #modify the starting point
-                        self.Image_Rectangle.set_x(self.Image_xend)
-                    self.Image_Rectangle.set_width(abs(self.Image_xend-self.Image_xstart))
+                        self.Image_ShowROI_Rectangle.set_x(self.Image_xend)
+                    self.Image_ShowROI_Rectangle.set_width(abs(self.Image_xend-self.Image_xstart))
                     if self.Image_ystart > self.Image_yend: #modify the starting point
-                        self.Image_Rectangle.set_y(self.Image_yend)
-                    self.Image_Rectangle.set_height(abs(self.Image_yend-self.Image_ystart))
-                    self.Image_Axe.draw_artist(self.Image_Rectangle)
+                        self.Image_ShowROI_Rectangle.set_y(self.Image_yend)
+                    self.Image_ShowROI_Rectangle.set_height(abs(self.Image_yend-self.Image_ystart))
+                    self.Image_Axe.draw_artist(self.Image_ShowROI_Rectangle)
                     self.Image_Canvas.blit(self.Image_Axe.bbox)
                 else:
                     xmax = int(max(self.Image_xend, self.Image_xstart))
                     xmin = int(min(self.Image_xend, self.Image_xstart))
                     ymax = int(max(self.Image_yend, self.Image_ystart))
                     ymin = int(min(self.Image_yend, self.Image_ystart))
-                    self.Image_Rectangle = self.Image_Canvas_Draw_Rectangle(xmin, xmax, ymin, ymax, 'b', animated = True)
+                    self.Image_ShowROI_Rectangle = self.Image_Canvas_Draw_Rectangle(xmin, xmax, ymin, ymax, 'b', animated = True)
                     self.Image_Canvas.draw()
                     self.non_animated_background = self.Image_Canvas.copy_from_bbox(self.Image_Axe.bbox)
             elif self.Image_Panning:
@@ -636,10 +637,8 @@ class MyMainWindow:
             index = np.fabs(self.Plot1D_xdata - xpointer).argmin()
         except:
             return
-        if not self.xrf_mode:
-            index = self.image_index_min + index * self.nbin
         if (self.xrf_mode and index != self.XRF_Plot_HScale_Adjustment.get_value()) or \
-           ((not self.xrf_mode) and  index != self.Image_Plot_HScale_Adjustment.get_value()):
+           ((not self.xrf_mode) and (self.image_index_min + index * self.nbin != self.Image_Plot_HScale_Adjustment.get_value())):
             if event.button == 3: 
                 try:
                     for hl in self.Plot1D_Hightlight:
@@ -653,7 +652,7 @@ class MyMainWindow:
                 if self.xrf_mode:
                     self.XRF_Plot_HScale_Adjustment.set_value(index)
                 else:
-                    self.Image_Plot_HScale_Adjustment.set_value(index)
+                    self.Image_Plot_HScale_Adjustment.set_value(self.image_index_min + index * self.nbin)
 
 
     def Plot1D_Vscale_Changed(self, widget):
@@ -1299,10 +1298,24 @@ class MyMainWindow:
         self.data = readMDA(mdapath, verbose=0, maxdim=3 if self.xrf_mode else 2)
         self.xrf_data = []
         ndim = len(self.data)-1 if self.data[0]["dimensions"][-1] != 2048 else len(self.data)-2
+        xrf_in_mda = self.data[0]["dimensions"][-1] == 2048
+        xrf_save = False
         if self.xrf_mode:
-            for i in range(5):
-                self.xrf_data += [self.data[ndim+1].d[i].data]
-            self.xrf_data = np.array(self.xrf_data).reshape(5,-1,2048)
+            if xrf_in_mda:
+                for i in range(5):
+                    self.xrf_data += [self.data[ndim+1].d[i].data]
+                self.xrf_data = np.array(self.xrf_data).reshape(5,-1,2048)
+            else:
+                fluo_folder = os.path.join(os.path.abspath(os.path.join(self.MDA_folder, os.pardir, 'fluo')))    
+                f_fluo = [f for f in os.listdir(fluo_folder) if f.startswith("scan_{0}".format(self.MDA_File_ListStore[self.mda_selection_path[0]][0]))]
+                if len(f_fluo):
+                    f_fluo = f_fluo[0]
+                    netcdffile = netCDF4.Dataset(os.path.join(fluo_folder,f_fluo), "r")
+                    ny = self.data[0]["dimensions"][0]
+                    nx = self.data[0]["dimensions"][1]
+                    self.xrf_data = np.swapaxes(np.swapaxes((netcdffile.variables['array_data'][:,:,256:].reshape(ny, 2, 124, 256+2048*4)[:,:, :nx,256:]),1,2).reshape(-1,8,2048), 0,1)[[0,1,2,3,7]]
+                    netcdffile.close()
+                    xrf_save = True
         for i in range(self.data[ndim].nd):
             dname = self.data[ndim].d[i].name
             self.MDA_Det_store.append([dname.replace("s26_eiger_cnm","eiger"), 1])
@@ -1312,7 +1325,7 @@ class MyMainWindow:
         self.Plot_Notebook.set_current_page(ndim-1)        
         self.Scan_ToolBox_Y_ComboBox.set_active(Scan_ToolBox_Y_ComboBox_Select)
 
-        if self.xrf_mode:
+        if self.xrf_mode and xrf_save:
             nspec = self.xrf_data.shape[1] if ndim == 1 else self.xrf_data.shape[1]*self.xrf_data.shape[2]
             self.XRF_Plot_HScale_Adjustment.set_upper(nspec-1)
             self.XRF_Plot_HScale_Adjustment.set_lower(0)
