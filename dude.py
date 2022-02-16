@@ -344,6 +344,10 @@ class MyMainWindow:
             if event.button == 1:
                 if self.Image_Zoomed == False:
                     self.Image_Zooming = True
+                    try:
+                        self.Image_ShowROI_Rectangle.remove()
+                    except (AttributeError, ValueError):
+                        pass
                 else:
                     self.Image_Panning = True
                     self.Image_ScrolledWindow_EventBox.get_window().set_cursor(Gdk.Cursor(Gdk.CursorType.FLEUR))
@@ -444,18 +448,18 @@ class MyMainWindow:
             xmin = int(self.XRF1_Vmin_HScale_Adjustment.get_value())
             xmax = int(self.XRF1_Vmax_HScale_Adjustment.get_value())
             if self.xrf1_spec == 0:
-                ydata = self.xrf_data[:4,:,xmin:xmax+1].sum(0).sum(1)
+                ydata = self.xrf_data[:-1,:,xmin:xmax+1].sum(0).sum(1)
             elif self.xrf1_spec == 8:
-                ydata = self.xrf_data[4,:,xmin:xmax+1].sum(1)
+                ydata = self.xrf_data[-1,:,xmin:xmax+1].sum(1)
             else:
                 ydata = self.xrf_data[self.xrf1_spec-1,:,xmin:xmax+1].sum(1)
         else:
             xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
             xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
             if self.xrf2_spec == 0:
-                ydata = self.xrf_data[:4,:,xmin:xmax+1].sum(0).sum(1)
+                ydata = self.xrf_data[:-1,:,xmin:xmax+1].sum(0).sum(1)
             elif self.xrf2_spec == 8:
-                ydata = self.xrf_data[4,:,xmin:xmax+1].sum(1)
+                ydata = self.xrf_data[-1,:,xmin:xmax+1].sum(1)
             else:
                 ydata = self.xrf_data[self.xrf2_spec-1,:,xmin:xmax+1].sum(1)
         ndim = len(self.data)-1 if self.data[0]["dimensions"][-1] != 2048 else len(self.data)-2
@@ -482,9 +486,9 @@ class MyMainWindow:
         self.XRF1_Axe.cla()
         index = int(self.XRF_Plot_HScale_Adjustment.get_value())
         if self.xrf1_spec == 0:
-            self.xrf1_data = self.xrf_data[:4].sum(0).sum(0)
+            self.xrf1_data = self.xrf_data[:-1].sum(0).sum(0)
         elif self.xrf1_spec == 8:
-            self.xrf1_data = self.xrf_data[4].sum(0)
+            self.xrf1_data = self.xrf_data[-1].sum(0)
         else:
             self.xrf1_data = self.xrf_data[self.xrf1_spec-1].sum(0)
         self.XRF1_Axe.plot(self.xrf1_data)
@@ -498,9 +502,9 @@ class MyMainWindow:
             self.XRF1_Axe.set_ylim(ymin-dy, ymax+dy)
         self.XRF2_Axe.cla()
         if self.xrf2_spec == 0:
-            self.xrf2_data = self.xrf_data[:4].sum(0).sum(0)
+            self.xrf2_data = self.xrf_data[:-1].sum(0).sum(0)
         elif self.xrf2_spec == 8:
-            self.xrf2_data = self.xrf_data[4].sum(0)
+            self.xrf2_data = self.xrf_data[-1].sum(0)
         else:
             self.xrf2_data = self.xrf_data[self.xrf2_spec-1].sum(0)
         self.XRF2_Axe.plot(self.xrf2_data)
@@ -513,27 +517,6 @@ class MyMainWindow:
             dy = (ymax-ymin)*0.05
             self.XRF2_Axe.set_ylim(ymin-dy, ymax+dy)
         self.XRF_Canvas.draw()
-
-    def XRF2_Plot(self, index=None):
-
-        self.XRF2_Axe.cla()
-        if index == None:
-            index = int(self.XRF_Plot_HScale_Adjustment.get_value())
-        if self.xrf2_spec == 0:
-            self.xrf2_data = self.xrf_data[:4,index].mean(0)
-        elif self.xrf2_spec == 8:
-            self.xrf2_data = self.xrf_data[4,index]
-        else:
-            self.xrf2_data = self.xrf_data[self.xrf2_spec-1,index]
-        self.XRF2_Axe.plot(self.xrf2_data)
-        xmin = int(self.XRF2_Vmin_HScale_Adjustment.get_value())
-        xmax = int(self.XRF2_Vmax_HScale_Adjustment.get_value())
-        if xmin < xmax:
-            self.XRF2_Axe.set_xlim(xmin-1, xmax+2)
-            ymin = self.xrf2_data[xmin:xmax+1].min()
-            ymax = self.xrf2_data[xmin:xmax+1].max()
-            dy = (ymax-ymin)*0.05
-            self.XRF2_Axe.set_ylim(ymin-dy, ymax+dy)
 
 
     def XRF1_Vscale_Changed(self, widget):
@@ -592,9 +575,9 @@ class MyMainWindow:
         if index == None:
             index = int(self.XRF_Plot_HScale_Adjustment.get_value())
         if self.xrf1_spec == 0:
-            self.xrf1_data = self.xrf_data[:4,index].mean(0)
+            self.xrf1_data = self.xrf_data[:-1,index].mean(0)
         elif self.xrf1_spec == 8:
-            self.xrf1_data = self.xrf_data[4,index]
+            self.xrf1_data = self.xrf_data[-1,index]
         else:
             self.xrf1_data = self.xrf_data[self.xrf1_spec-1,index]
         self.XRF1_Axe.plot(self.xrf1_data)
@@ -613,9 +596,9 @@ class MyMainWindow:
         if index == None:
             index = int(self.XRF_Plot_HScale_Adjustment.get_value())
         if self.xrf2_spec == 0:
-            self.xrf2_data = self.xrf_data[:4,index].mean(0)
+            self.xrf2_data = self.xrf_data[:-1,index].mean(0)
         elif self.xrf2_spec == 8:
-            self.xrf2_data = self.xrf_data[4,index]
+            self.xrf2_data = self.xrf_data[-1,index]
         else:
             self.xrf2_data = self.xrf_data[self.xrf2_spec-1,index]
         self.XRF2_Axe.plot(self.xrf2_data)
@@ -1297,14 +1280,15 @@ class MyMainWindow:
         self.MDA_Det_store.clear()
         self.data = readMDA(mdapath, verbose=0, maxdim=3 if self.xrf_mode else 2)
         self.xrf_data = []
-        ndim = len(self.data)-1 if self.data[0]["dimensions"][-1] != 2048 else len(self.data)-2
         xrf_in_mda = self.data[0]["dimensions"][-1] == 2048
-        xrf_save = False
+        ndim = len(self.data)-2 if xrf_in_mda else len(self.data)-1
+        xrf_in_netcdf = False
         if self.xrf_mode:
             if xrf_in_mda:
-                for i in range(5):
+                nchan = self.data[ndim+1].nd
+                for i in range(nchan):
                     self.xrf_data += [self.data[ndim+1].d[i].data]
-                self.xrf_data = np.array(self.xrf_data).reshape(5,-1,2048)
+                self.xrf_data = np.array(self.xrf_data).reshape(nchan,-1,2048)
             else:
                 fluo_folder = os.path.join(os.path.abspath(os.path.join(self.MDA_folder, os.pardir, 'fluo')))    
                 f_fluo = [f for f in os.listdir(fluo_folder) if f.startswith("scan_{0}".format(self.MDA_File_ListStore[self.mda_selection_path[0]][0]))]
@@ -1313,9 +1297,9 @@ class MyMainWindow:
                     netcdffile = netCDF4.Dataset(os.path.join(fluo_folder,f_fluo), "r")
                     ny = self.data[0]["dimensions"][0]
                     nx = self.data[0]["dimensions"][1]
-                    self.xrf_data = np.swapaxes(np.swapaxes((netcdffile.variables['array_data'][:,:,256:].reshape(ny, 2, 124, 256+2048*4)[:,:, :nx,256:]),1,2).reshape(-1,8,2048), 0,1)[[0,1,2,3,7]]
+                    self.xrf_data = np.swapaxes(np.swapaxes((netcdffile.variables['array_data'][:,:,256:].reshape(ny, 2, 124, 256+2048*4)[:,:,:nx,256:]),1,2).reshape(-1,8,2048), 0,1)
                     netcdffile.close()
-                    xrf_save = True
+                    xrf_in_netcdf = True
         for i in range(self.data[ndim].nd):
             dname = self.data[ndim].d[i].name
             self.MDA_Det_store.append([dname.replace("s26_eiger_cnm","eiger"), 1])
@@ -1325,7 +1309,7 @@ class MyMainWindow:
         self.Plot_Notebook.set_current_page(ndim-1)        
         self.Scan_ToolBox_Y_ComboBox.set_active(Scan_ToolBox_Y_ComboBox_Select)
 
-        if self.xrf_mode and xrf_save:
+        if self.xrf_mode and (xrf_in_mda or xrf_in_netcdf):
             nspec = self.xrf_data.shape[1] if ndim == 1 else self.xrf_data.shape[1]*self.xrf_data.shape[2]
             self.XRF_Plot_HScale_Adjustment.set_upper(nspec-1)
             self.XRF_Plot_HScale_Adjustment.set_lower(0)
@@ -1570,7 +1554,6 @@ class MyMainWindow:
     def __init__(self):
 
         if os.path.exists("/home/sector26/pythonscripts/Tao/token.json"):
-            beamline = True
             SCOPES = ['https://www.googleapis.com/auth/drive.file']
             creds = Credentials.from_authorized_user_file('/home/sector26/pythonscripts/Tao/token.json', SCOPES)
             # If there are no (valid) credentials available, let the user log in.
@@ -1579,7 +1562,7 @@ class MyMainWindow:
                     creds.refresh(Request())
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file('/home/sector26/pythonscripts/Tao/client_secrets.json', SCOPES)
-                    creds = flow.run_local_server(port=0)
+                    creds = flow.run_local_server()
                     # Save the credentials for the next run
                 with open('/home/sector26/pythonscripts/Tao/token.json', 'w') as token:
                     token.write(creds.to_json())
@@ -1591,6 +1574,7 @@ class MyMainWindow:
             creds2 = ServiceAccountCredentials.from_json_keyfile_name('/home/sector26/pythonscripts/Tao/automatedlogbook.json', SCOPES2)
 
             self.client = gspread.authorize(creds2)
+            beamline = True
         else:
             beamline = False
 
@@ -2024,7 +2008,7 @@ class MyMainWindow:
         XRF1_Vmin_Label = Gtk.Label()
         XRF1_Vmin_Label.set_text('Vmin:')
 
-        XRF1_Spec0_RadioButton = Gtk.RadioButton(group=None, label="1-4")
+        XRF1_Spec0_RadioButton = Gtk.RadioButton(group=None, label="1-7")
         XRF1_Spec0_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 0)
         XRF1_Spec1_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="1")
         XRF1_Spec1_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 1)
@@ -2034,6 +2018,12 @@ class MyMainWindow:
         XRF1_Spec3_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 3)
         XRF1_Spec4_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="4")
         XRF1_Spec4_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 4)
+        XRF1_Spec5_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="5")
+        XRF1_Spec5_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 5)
+        XRF1_Spec6_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="6")
+        XRF1_Spec6_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 6)
+        XRF1_Spec7_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="7")
+        XRF1_Spec7_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 7)
         XRF1_Spec8_RadioButton = Gtk.RadioButton(group=XRF1_Spec0_RadioButton, label="8")
         XRF1_Spec8_RadioButton.connect("toggled", self.XRF1_Spec_Changed, 8)
         self.xrf1_spec = 0
@@ -2058,7 +2048,7 @@ class MyMainWindow:
         XRF2_Vmin_Label = Gtk.Label()
         XRF2_Vmin_Label.set_text('Vmin:')
 
-        XRF2_Spec0_RadioButton = Gtk.RadioButton(group=None, label="1-4")
+        XRF2_Spec0_RadioButton = Gtk.RadioButton(group=None, label="1-7")
         XRF2_Spec0_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 0)
         XRF2_Spec1_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="1")
         XRF2_Spec1_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 1)
@@ -2068,6 +2058,12 @@ class MyMainWindow:
         XRF2_Spec3_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 3)
         XRF2_Spec4_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="4")
         XRF2_Spec4_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 4)
+        XRF2_Spec5_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="5")
+        XRF2_Spec5_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 5)
+        XRF2_Spec6_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="6")
+        XRF2_Spec6_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 6)
+        XRF2_Spec7_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="7")
+        XRF2_Spec7_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 7)
         XRF2_Spec8_RadioButton = Gtk.RadioButton(group=XRF2_Spec0_RadioButton, label="8")
         XRF2_Spec8_RadioButton.connect("toggled", self.XRF2_Spec_Changed, 8)
         self.xrf2_spec = 0
@@ -2089,6 +2085,9 @@ class MyMainWindow:
         XRF_Toolbar_HBox1.pack_start(XRF1_Spec2_RadioButton, False, False, 0)
         XRF_Toolbar_HBox1.pack_start(XRF1_Spec3_RadioButton, False, False, 0)
         XRF_Toolbar_HBox1.pack_start(XRF1_Spec4_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec5_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec6_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox1.pack_start(XRF1_Spec7_RadioButton, False, False, 0)
         XRF_Toolbar_HBox1.pack_start(XRF1_Spec8_RadioButton, False, False, 0)
         #XRF_Toolbar_HBox1.pack_start(XRF1_Vmin_Label, False, False, 3)
         XRF_Toolbar_HBox1.pack_start(self.XRF1_Vmin_HScale, True, True, 3)
@@ -2102,6 +2101,9 @@ class MyMainWindow:
         XRF_Toolbar_HBox2.pack_start(XRF2_Spec2_RadioButton, False, False, 0)
         XRF_Toolbar_HBox2.pack_start(XRF2_Spec3_RadioButton, False, False, 0)
         XRF_Toolbar_HBox2.pack_start(XRF2_Spec4_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec5_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec6_RadioButton, False, False, 0)
+        XRF_Toolbar_HBox2.pack_start(XRF2_Spec7_RadioButton, False, False, 0)
         XRF_Toolbar_HBox2.pack_start(XRF2_Spec8_RadioButton, False, False, 0)
         #XRF_Toolbar_HBox2.pack_start(XRF2_Vmin_Label, False, False, 3)
         XRF_Toolbar_HBox2.pack_start(self.XRF2_Vmin_HScale, True, True, 3)
